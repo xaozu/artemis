@@ -21,6 +21,7 @@ import { AgentStreamComponent } from '../../components/agent-stream/agent-stream
 import { ChatInterfaceComponent } from '../../components/chat-interface/chat-interface.component';
 import { FloatingVideoPlayerComponent } from '../../components/floating-video-player/floating-video-player.component';
 import { AgentService } from '../../services/agent.service';
+import { UiLanguageService } from '../../core/services/ui-language.service';
 
 @Component({
   selector: 'app-workspace',
@@ -37,6 +38,7 @@ import { AgentService } from '../../services/agent.service';
 })
 export class WorkspaceComponent implements OnInit {
   public agentService = inject(AgentService);
+  public language = inject(UiLanguageService);
   private zone = inject(NgZone);
   private destroyRef = inject(DestroyRef);
 
@@ -112,13 +114,13 @@ export class WorkspaceComponent implements OnInit {
       const truncated = session.initial_goal.length > 45
         ? session.initial_goal.substring(0, 42) + '...'
         : session.initial_goal;
-      return `Stop current task: "${truncated}"`;
+      return `${this.language.text('workspace.stopCurrent')}: "${truncated}"`;
     }
     const curId = this.agentService.currentSessionId();
     if (curId) {
-      return `Stop current task (${curId})`;
+      return `${this.language.text('workspace.stopCurrent')} (${curId})`;
     }
-    return 'Stop current running task';
+    return this.language.text('workspace.stopRunning');
   });
 
   /**
@@ -244,7 +246,7 @@ export class WorkspaceComponent implements OnInit {
       error: (err) => {
         console.error('Failed to submit task:', err);
         this.isSubmitting.set(false);
-        this.errorMessage.set(err.error?.detail || 'The runner is busy. Please wait for current task to finish.');
+        this.errorMessage.set(err.error?.detail || this.language.text('workspace.busyError'));
         setTimeout(() => {
           this.errorMessage.set(null);
         }, 5000);

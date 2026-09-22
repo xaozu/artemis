@@ -32,7 +32,7 @@
     <!-- Task entry section -->
     <section class="hero-section">
       <h1 class="hero-title">
-        What would you like to do on your phone?
+        {{ language.text('home.hero') }}
       </h1>
     </section>
 
@@ -50,7 +50,7 @@
           } @else {
             <span class="material-symbols-outlined tab-icon">tune</span>
           }
-          <span class="tab-label">System Setup & Prerequisites</span>
+          <span class="tab-label">{{ language.text('home.setupTab') }}</span>
         </button>
 
         <button
@@ -64,7 +64,7 @@
           } @else {
             <span class="material-symbols-outlined tab-icon">rocket_launch</span>
           }
-          <span class="tab-label">Launch Autonomous Task</span>
+          <span class="tab-label">{{ language.text('home.launchTab') }}</span>
         </button>
       </div>
     </div>
@@ -90,9 +90,9 @@
     </div>
     <div class="step-info">
       <div class="step-title-row">
-        <h3 class="step-title">System & Environment</h3>
+        <h3 class="step-title">{{ language.text('home.setupTitle') }}</h3>
       </div>
-      <p class="step-desc">Core tools, Android debug bridge, and video recording runtime</p>
+      <p class="step-desc">{{ language.text('home.setupDescription') }}</p>
     </div>
 
     <button
@@ -100,10 +100,10 @@
       class="btn-header-action"
       [disabled]="isRefreshingDiagnostics()"
       (click)="refreshReadiness()"
-      title="Re-check all system dependencies"
+      [title]="language.text('home.recheckTitle')"
     >
       <span class="material-symbols-outlined" [class.spinning]="isRefreshingDiagnostics()">refresh</span>
-      <span>{{ isRefreshingDiagnostics() ? 'Checking...' : 'Re-check' }}</span>
+      <span>{{ isRefreshingDiagnostics() ? language.text('home.checking') : language.text('home.recheck') }}</span>
     </button>
   </div>
 
@@ -1685,12 +1685,12 @@
                 <span class="material-symbols-outlined step-check-icon">check</span>
               </div>
               <div class="ready-text-group">
-                <h4 class="ready-title">System Ready for Autonomous Tasks</h4>
-                <p class="ready-desc">All dependencies, AI model credentials, and Android device are verified and ready to run.</p>
+                <h4 class="ready-title">{{ language.text('home.readyTitle') }}</h4>
+                <p class="ready-desc">{{ language.text('home.readyDescription') }}</p>
               </div>
             </div>
             <button type="button" class="btn-proceed-launch" (click)="setTab('launcher')">
-              <span>Launch Autonomous Task</span>
+              <span>{{ language.text('home.launchTab') }}</span>
               <span class="material-symbols-outlined rocket-icon">rocket_launch</span>
             </button>
           </div>
@@ -1711,8 +1711,8 @@
             <span class="material-symbols-outlined warn-icon">{{ adbProbe()?.summary === 'Device Locked' ? 'lock' : 'warning' }}</span>
             <span>
               {{ adbProbe()?.summary === 'Device Locked'
-                ? 'Android device is locked. Unlock it and enter the home screen before running a task.'
-                : 'Prerequisites incomplete: runtime, credentials, or Android device is not ready. Click here to open Setup Guide.' }}
+                ? language.text('home.lockedWarning')
+                : language.text('home.setupWarning') }}
             </span>
             <span class="material-symbols-outlined arrow">arrow_forward</span>
           </div>
@@ -1727,11 +1727,11 @@
               <div class="suggestion-left">
                 <span class="material-symbols-outlined sparkle-icon">auto_awesome</span>
                 <span class="suggestion-text">
-                  Continuous monitoring or complex task detected. Recommended: <strong>Pro Mode</strong>
+                  {{ language.text('home.proSuggestion') }} <strong>{{ language.text('home.proMode') }}</strong>
                 </span>
               </div>
               <button type="button" class="btn-switch-pro" (click)="setProfile('pro')">
-                <span>Switch to Pro</span>
+                <span>{{ language.text('home.switchToPro') }}</span>
                 <span class="material-symbols-outlined btn-arrow">arrow_forward</span>
               </button>
             </div>
@@ -1745,7 +1745,7 @@
               rows="3"
               [(ngModel)]="taskGoal"
               [disabled]="isSubmitting()"
-              placeholder="Describe what you want to achieve on your phone (e.g. Open Gmail and search for latest emails)..."
+              [placeholder]="language.text('home.goalPlaceholder')"
               (keydown.control.enter)="runTask()"
               (keydown.meta.enter)="runTask()"
             ></textarea>
@@ -1761,14 +1761,14 @@
                 <p class="desc-line">
                   <span class="mode-name">Flash</span>
                   <span class="bullet">·</span>
-                  <span>Token-efficient, rapid <strong>3–5s/step</strong> decisions straight from the live screen. Best for everyday tasks with a clear path, however long they run.</span>
-                  <span class="limitation-tag">(No plan, no result check, no ADB commands)</span>
+                  <span>{{ language.text('home.flashDescription') }}</span>
+                  <span class="limitation-tag">{{ language.text('home.flashLimitation') }}</span>
                 </p>
               } @else {
                 <p class="desc-line">
                   <span class="mode-name">Pro</span>
                   <span class="bullet">·</span>
-                  <span>Plans first, checks its results and recovers when a tap is blocked. Handles <strong>100+ step</strong> workflows and live phone monitoring (<strong>15–40s</strong> / step).</span>
+                  <span>{{ language.text('home.proDescription') }}</span>
                 </p>
               }
             </div>
@@ -1792,7 +1792,7 @@
                   class="model-toggle-btn btn-flash"
                   [class.active]="selectedProfile() === 'flash'"
                   (click)="setProfile('flash')"
-                  title="Flash: fast single-look loop for everyday app tasks (3–5s/step)"
+                  [title]="language.text('home.flashTitle')"
                 >
                   <span class="material-symbols-outlined btn-icon">bolt</span>
                   <span class="btn-text">Flash</span>
@@ -1802,7 +1802,7 @@
                   class="model-toggle-btn btn-pro"
                   [class.active]="selectedProfile() === 'pro'"
                   (click)="setProfile('pro')"
-                  title="Pro: plans first, checks results and recovers from blocked steps. For long or complex tasks (15–40s/step)"
+                  [title]="language.text('home.proTitle')"
                 >
                   <span class="material-symbols-outlined btn-icon">psychology</span>
                   <span class="btn-text">Pro</span>
@@ -1812,7 +1812,7 @@
 
             <div class="bar-right">
               @if (taskGoal().length > 0) {
-                <span class="char-count">{{ taskGoal().length }} chars</span>
+                <span class="char-count">{{ taskGoal().length }} {{ language.text('home.chars') }}</span>
               }
 
               <!-- Run Button -->
@@ -1821,13 +1821,13 @@
                 class="btn-run-composer"
                 [class.btn-run-pro]="selectedProfile() === 'pro'"
                 [disabled]="!taskGoal().trim() || isSubmitting() || !isReady()"
-                [title]="!isReady() ? (adbProbe()?.summary === 'Device Locked' ? 'Unlock the Android device before running' : 'Complete System Setup before running') : 'Run task'"
+                [title]="!isReady() ? (adbProbe()?.summary === 'Device Locked' ? language.text('home.unlockTitle') : language.text('home.completeSetupTitle')) : language.text('home.runTitle')"
                 (click)="runTask()"
               >
                 @if (isSubmitting()) {
-                  <span class="spinner"></span><span>Starting...</span>
+                  <span class="spinner"></span><span>{{ language.text('home.starting') }}</span>
                 } @else {
-                  <span class="material-symbols-outlined run-icon">play_arrow</span><span>Run Task</span>
+                  <span class="material-symbols-outlined run-icon">play_arrow</span><span>{{ language.text('home.runTask') }}</span>
                 }
               </button>
             </div>
@@ -1838,8 +1838,8 @@
         @if (selectedProfile() === 'pro') {
           <div class="pro-outputter-standalone-card">
             <div class="outputter-card-header">
-              <span class="outputter-title">Expected Output</span>
-              <span class="outputter-optional-tag">(Optional)</span>
+              <span class="outputter-title">{{ language.text('home.expectedOutput') }}</span>
+              <span class="outputter-optional-tag">{{ language.text('home.optional') }}</span>
             </div>
 
             <div class="outputter-input-wrapper">
@@ -1848,7 +1848,7 @@
                 class="outputter-standalone-input"
                 [ngModel]="expectedOutput()"
                 (ngModelChange)="expectedOutput.set($event)"
-                placeholder="Specify expected output or schema (e.g. 'Extract SMS verification code as JSON' or 'Summary of discounts and total price')..."
+                [placeholder]="language.text('home.expectedOutputPlaceholder')"
                 spellcheck="false"
               />
               @if (expectedOutput().trim()) {
@@ -1856,7 +1856,7 @@
                   type="button"
                   class="btn-clear-standalone"
                   (click)="expectedOutput.set('')"
-                  title="Clear expected output"
+                  [title]="language.text('home.clearExpectedOutput')"
                 >
                   <span class="material-symbols-outlined">close</span>
                 </button>
@@ -1867,9 +1867,9 @@
           <!-- Pro Mode Tuning Card: verification depth & explorer perception sliders -->
           <div class="pro-tuning-card" [class.tip-open]="activeTuningTip() !== null">
             <div class="tuning-card-header">
-              <span class="tuning-title">Pro settings</span>
+              <span class="tuning-title">{{ language.text('home.proSettings') }}</span>
               @if (!isTuningDefault()) {
-                <button type="button" class="btn-tuning-reset" (click)="resetTuning()" title="Back to the defaults">Reset</button>
+                <button type="button" class="btn-tuning-reset" (click)="resetTuning()" [title]="language.text('home.resetTitle')">{{ language.text('home.reset') }}</button>
               }
             </div>
 
@@ -1949,7 +1949,7 @@
                         </div>
                         <p class="tip-tagline">{{ slider.level.tagline }}</p>
                         <div class="tip-section">
-                          <span class="tip-section-title">What happens</span>
+                          <span class="tip-section-title">{{ language.text('home.whatHappens') }}</span>
                           <ul>
                             @for (line of slider.level.runs; track $index) {
                               <li>{{ line }}</li>
@@ -1958,7 +1958,7 @@
                         </div>
                         @if (slider.level.skips?.length) {
                           <div class="tip-section skips">
-                            <span class="tip-section-title">Not included</span>
+                            <span class="tip-section-title">{{ language.text('home.notIncluded') }}</span>
                             <ul>
                               @for (line of slider.level.skips; track $index) {
                                 <li>{{ line }}</li>
@@ -1967,7 +1967,7 @@
                           </div>
                         }
                         <div class="tip-best">
-                          <span class="tip-section-title">Use it for</span>
+                          <span class="tip-section-title">{{ language.text('home.useItFor') }}</span>
                           <span>{{ slider.level.bestFor }}</span>
                         </div>
                       </div>

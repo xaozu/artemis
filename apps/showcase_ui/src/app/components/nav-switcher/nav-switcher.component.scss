@@ -113,3 +113,17 @@
     }
   }
 }
+
+/* 语言入口随主导航排列，避免覆盖工作台右侧的任务操作。 */
+.floating-nav-switcher .language-switch {
+  min-width: 42px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+
+  &:focus-visible {
+    outline: 2px solid #1a73e8;
+    outline-offset: -2px;
+  }
+}

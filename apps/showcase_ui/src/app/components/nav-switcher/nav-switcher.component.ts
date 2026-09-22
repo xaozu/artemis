@@ -14,38 +14,52 @@
  * limitations under the License.
  */
 
-import { Component, ChangeDetectionStrategy } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject } from '@angular/core';
 
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { UiLanguageService } from '../../core/services/ui-language.service';
 
 @Component({
   selector: 'app-nav-switcher',
   standalone: true,
   imports: [RouterLink, RouterLinkActive],
   template: `
-    <nav class="floating-nav-switcher" aria-label="Main Navigation">
+    <nav class="floating-nav-switcher" [attr.aria-label]="language.text('nav.main')">
       <a 
         routerLink="/" 
         routerLinkActive="active" 
         [routerLinkActiveOptions]="{exact: true}"
         class="nav-tab-btn"
-        title="Return to Home Launcher to start a new task"
+        [title]="language.text('nav.homeTitle')"
       >
         <span class="material-symbols-outlined tab-icon">add_task</span>
-        <span class="tab-label">New / Home</span>
+        <span class="tab-label">{{ language.text('nav.home') }}</span>
       </a>
       <a 
         routerLink="/workspace" 
         routerLinkActive="active" 
         class="nav-tab-btn"
-        title="Open Workspace"
+        [title]="language.text('nav.workspaceTitle')"
       >
         <span class="material-symbols-outlined tab-icon">space_dashboard</span>
-        <span class="tab-label">Workspace</span>
+        <span class="tab-label">{{ language.text('nav.workspace') }}</span>
       </a>
+      <button type="button" class="nav-tab-btn language-switch"
+        (click)="toggleLanguage()"
+        [title]="language.language() === 'en' ? language.text('nav.switchToChinese') : language.text('nav.switchToEnglish')"
+        [attr.aria-label]="language.language() === 'en' ? language.text('nav.switchToChinese') : language.text('nav.switchToEnglish')">
+        {{ language.language() === 'en' ? '中文' : 'EN' }}
+      </button>
     </nav>
   `,
   changeDetection: ChangeDetectionStrategy.Eager,
   styleUrls: ['./nav-switcher.component.scss']
 })
-export class NavSwitcherComponent {}
+export class NavSwitcherComponent {
+  readonly language = inject(UiLanguageService);
+
+  /** 顶部入口负责切换整个网页的关键操作文案。 */
+  toggleLanguage(): void {
+    this.language.setLanguage(this.language.language() === 'en' ? 'zh' : 'en');
+  }
+}

@@ -24,11 +24,11 @@ limitations under the License.
         class="vscode-tab-btn"
         [class.active]="isTaskDropdownOpen()"
         (click)="toggleTaskDropdown($event)"
-        title="Task Queue"
-        aria-label="Task Queue"
+        [title]="language.text('tasks.queue')"
+        [attr.aria-label]="language.text('tasks.queue')"
         >
         <span class="material-symbols-outlined tab-icon">list_alt</span>
-        <span class="tab-label">Task Queue</span>
+        <span class="tab-label">{{ language.text('tasks.queue') }}</span>
       </button>
       <button
         #notesOrigin="cdkOverlayOrigin"
@@ -36,11 +36,11 @@ limitations under the License.
         class="vscode-tab-btn"
         [class.active]="isNotesDropdownOpen()"
         (click)="toggleNotesDropdown($event)"
-        title="Notes & Plans"
-        aria-label="Notes & Plans"
+        [title]="language.text('tasks.notes')"
+        [attr.aria-label]="language.text('tasks.notes')"
         >
         <span class="material-symbols-outlined tab-icon">description</span>
-        <span class="tab-label">Notes & Plans</span>
+        <span class="tab-label">{{ language.text('tasks.notes') }}</span>
       </button>
     </div>
 
@@ -57,15 +57,15 @@ limitations under the License.
       <div class="vscode-dropdown-menu task-dropdown">
         <div class="popover-title-header">
           <span class="material-symbols-outlined">list_alt</span>
-          <span>Task Queue</span>
+          <span>{{ language.text('tasks.queue') }}</span>
         </div>
         <div class="dropdown-section-label">
           <span class="material-symbols-outlined icon-bolt">bolt</span>
-          <span>Active Queue ({{ activeQueue().length }})</span>
+          <span>{{ language.text('tasks.active') }} ({{ activeQueue().length }})</span>
         </div>
         @if (activeQueue().length === 0) {
           <div class="dropdown-empty-state">
-            No active or queued tasks
+            {{ language.text('tasks.empty') }}
           </div>
         }
         @for (session of activeQueue(); track trackSession($index, session)) {
@@ -98,8 +98,8 @@ limitations under the License.
                     type="button"
                     class="btn-stop-card"
                     (click)="stopTask(session.session_id, $event)"
-                    title="Stop this task"
-                    aria-label="Stop this task"
+                    [title]="language.text('tasks.stop')"
+                    [attr.aria-label]="language.text('tasks.stop')"
                     >
                     <span class="material-symbols-outlined">stop_circle</span>
                   </button>
@@ -109,8 +109,8 @@ limitations under the License.
                     type="button"
                     class="btn-delete-card"
                     (click)="deleteTask(session.session_id, $event)"
-                    title="Delete this task"
-                    aria-label="Delete this task"
+                    [title]="language.text('tasks.delete')"
+                    [attr.aria-label]="language.text('tasks.delete')"
                     >
                     <span class="material-symbols-outlined">delete</span>
                   </button>
@@ -128,7 +128,7 @@ limitations under the License.
         }
         <div class="dropdown-section-label history-label">
           <span class="material-symbols-outlined icon-history">history</span>
-          <span>Past Runs & History ({{ historyTasks().length }})</span>
+          <span>{{ language.text('tasks.history') }} ({{ historyTasks().length }})</span>
         </div>
         @if (historyTasks().length === 0) {
           <div class="dropdown-empty-state">
@@ -166,8 +166,8 @@ limitations under the License.
                       type="button"
                       class="btn-delete-card"
                       (click)="deleteTask(session.session_id, $event)"
-                      title="Delete this task"
-                      aria-label="Delete this task"
+                      [title]="language.text('tasks.delete')"
+                      [attr.aria-label]="language.text('tasks.delete')"
                       >
                       <span class="material-symbols-outlined">delete</span>
                     </button>
@@ -200,7 +200,7 @@ limitations under the License.
       <div class="vscode-dropdown-menu notes-dropdown">
         <div class="popover-title-header">
           <span class="material-symbols-outlined">description</span>
-          <span>Notes & Plans</span>
+          <span>{{ language.text('tasks.notes') }}</span>
         </div>
         <!-- Notes Selector / Pills (Shown if there are note files) -->
         @if (noteKeys().length > 1) {
@@ -562,7 +562,7 @@ limitations under the License.
       <div class="empty-state">
         <div class="empty-icon"><span class="material-symbols-outlined">sensors</span></div>
         <h3>No Stream Activity Selected</h3>
-        <p>Please select a session from the Task List on the right to view its real-time log payloads.</p>
+        <p>{{ language.text('tasks.selectToView') }}</p>
       </div>
     }
 
@@ -772,7 +772,7 @@ limitations under the License.
                                       {{ getReportStatusValue(item.data) === 'failed' ? 'cancel' : 'task_alt' }}
                                     </span>
                                     <span class="action-title">
-                                      {{ getReportStatusValue(item.data) === 'failed' ? 'Task Execution Failed' : 'Task Completed' }}
+                                      {{ getReportStatusValue(item.data) === 'failed' ? language.text('tasks.failed') : language.text('tasks.completed') }}
                                     </span>
                                     <span class="action-status-badge" [class.is-failed]="getReportStatusValue(item.data) === 'failed'" [class.is-completed]="getReportStatusValue(item.data) !== 'failed'">
                                       <span class="material-symbols-outlined status-icon">
@@ -1337,7 +1337,7 @@ limitations under the License.
             <div class="synthesis-card-header">
               <div class="header-left">
                 <span class="material-symbols-outlined icon-sparkle">assignment_turned_in</span>
-                <span class="main-title">Task Report</span>
+                <span class="main-title">{{ language.text('tasks.report') }}</span>
               </div>
               <div class="header-right">
                 <button type="button" class="btn-open-note" (click)="openOutputterNote($event)">

@@ -18,6 +18,7 @@ import { Component, ChangeDetectionStrategy, inject, computed, signal } from '@a
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AgentService } from '../../services/agent.service';
+import { UiLanguageService } from '../../core/services/ui-language.service';
 import { Session } from '../../core/models/session.model';
 import { MarkdownSegment, MarkdownLine, NoteMilestone, ParsedNote } from '../../core/models/markdown.model';
 import { parseNote, parseNoteLines } from '../../utils/markdown-parser.util';
@@ -34,6 +35,7 @@ export type { MarkdownSegment, MarkdownLine, NoteMilestone, ParsedNote };
 })
 export class ChatInterfaceComponent {
   public agentService = inject(AgentService);
+  public language = inject(UiLanguageService);
 
   public taskInput: string = '';
   // Signals so async completion handlers refresh this OnPush view.

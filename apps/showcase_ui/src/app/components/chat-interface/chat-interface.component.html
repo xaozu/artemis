@@ -25,7 +25,7 @@ limitations under the License.
         (click)="agentService.activeTab.set('tasks')"
         >
         <span class="material-symbols-outlined tab-icon">list_alt</span>
-        <span class="tab-text">Task Queue</span>
+        <span class="tab-text">{{ language.text('tasks.queue') }}</span>
       </button>
       <button
         class="tab-selector-btn"
@@ -33,7 +33,7 @@ limitations under the License.
         (click)="agentService.activeTab.set('notes')"
         >
         <span class="material-symbols-outlined tab-icon">description</span>
-        <span class="tab-text">Notes & Plans</span>
+        <span class="tab-text">{{ language.text('tasks.notes') }}</span>
       </button>
     </div>
 
@@ -42,8 +42,8 @@ limitations under the License.
         <button
           class="btn-clear-history"
           (click)="clearHistory()"
-          title="Clear all tasks and history"
-          aria-label="Clear all tasks and history"
+          [title]="language.text('tasks.clearHistory')"
+          [attr.aria-label]="language.text('tasks.clearHistory')"
           [disabled]="isSubmitting()"
           >
           <span class="material-symbols-outlined">delete</span>
@@ -58,11 +58,11 @@ limitations under the License.
     @if (agentService.activeTab() === 'tasks') {
       <!-- Active Queue Section -->
       <div class="queue-section-header">
-        <span class="material-symbols-outlined section-icon">bolt</span> Active Queue ({{ activeQueue().length }})
+        <span class="material-symbols-outlined section-icon">bolt</span> {{ language.text('tasks.active') }} ({{ activeQueue().length }})
       </div>
       @if (activeQueue().length === 0) {
         <div class="empty-section-placeholder">
-          No active or queued tasks.
+          {{ language.text('tasks.empty') }}
         </div>
       }
       @for (session of activeQueue(); track trackSession($index, session)) {
@@ -95,8 +95,8 @@ limitations under the License.
                   type="button"
                   class="btn-stop-card"
                   (click)="stopTask(session.session_id, $event)"
-                  title="Stop this task"
-                  aria-label="Stop this task"
+                  [title]="language.text('tasks.stop')"
+                  [attr.aria-label]="language.text('tasks.stop')"
                   >
                   <span class="material-symbols-outlined">stop_circle</span>
                 </button>
@@ -106,8 +106,8 @@ limitations under the License.
                   type="button"
                   class="btn-delete-card"
                   (click)="deleteTask(session.session_id, $event)"
-                  title="Delete this task"
-                  aria-label="Delete this task"
+                  [title]="language.text('tasks.delete')"
+                  [attr.aria-label]="language.text('tasks.delete')"
                   [disabled]="isSubmitting()"
                   >
                   <span class="material-symbols-outlined">delete</span>
@@ -127,7 +127,7 @@ limitations under the License.
       <!-- Collapsible History Section -->
       <details class="history-section" open>
         <summary class="history-summary">
-          <span class="material-symbols-outlined section-icon">history</span> Past Runs & History ({{ historyTasks().length }})
+          <span class="material-symbols-outlined section-icon">history</span> {{ language.text('tasks.history') }} ({{ historyTasks().length }})
         </summary>
         <div class="history-list-wrapper">
           @if (historyTasks().length === 0) {
@@ -165,8 +165,8 @@ limitations under the License.
                       type="button"
                       class="btn-delete-card"
                       (click)="deleteTask(session.session_id, $event)"
-                      title="Delete this task"
-                      aria-label="Delete this task"
+                      [title]="language.text('tasks.delete')"
+                      [attr.aria-label]="language.text('tasks.delete')"
                       [disabled]="isSubmitting()"
                       >
                       <span class="material-symbols-outlined">delete</span>
@@ -377,4 +377,3 @@ limitations under the License.
     }
   </main>
 </div>
-

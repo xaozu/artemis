@@ -31,6 +31,7 @@ import {
   SuggestionCategory
 } from '../../core/data/smart-tasks.data';
 import { TaskRecommendationService } from '../../core/services/task-recommendation.service';
+import { UiLanguageService } from '../../core/services/ui-language.service';
 import {
   DEFAULT_EXPLORER_MODE,
   DEFAULT_VERIFICATION_LEVEL,
@@ -112,6 +113,7 @@ export class HomeComponent implements OnInit, OnDestroy {
   public agentService = inject(AgentService);
   public systemService = inject(SystemService);
   public taskRecService = inject(TaskRecommendationService);
+  public language = inject(UiLanguageService);
   private router = inject(Router);
 
   // High-level navigation mode: 'diagnostics' (System Setup Guide) vs 'launcher' (Task Execution)
@@ -233,25 +235,28 @@ export class HomeComponent implements OnInit, OnDestroy {
     return this.verificationLevel().id === d.verification && this.explorerMode().id === d.explorer;
   });
   public tuningSliders = computed<TuningSliderVm[]>(() => {
+    const chinese = this.language.language() === 'zh';
     const vi = this.verificationIndex();
     const ei = this.explorerIndex();
+    const verifyLadder = VERIFICATION_LEVELS.map(level => this.language.tuningLevel('verify', level));
+    const exploreLadder = EXPLORER_MODES.map(level => this.language.tuningLevel('explore', level));
     return [
       {
         kind: 'verify',
-        name: 'Result check',
-        ends: ['Off', 'Strict'],
-        ladder: VERIFICATION_LEVELS,
+        name: this.language.text('home.resultCheck'),
+        ends: chinese ? ['关闭', '严格'] : ['Off', 'Strict'],
+        ladder: verifyLadder,
         index: vi,
-        level: VERIFICATION_LEVELS[vi],
+        level: verifyLadder[vi],
         fraction: notchPercent(vi, VERIFICATION_LEVELS.length) / 100
       },
       {
         kind: 'explore',
-        name: 'Screen reading',
-        ends: ['Faster', 'Sharper'],
-        ladder: EXPLORER_MODES,
+        name: this.language.text('home.screenReading'),
+        ends: [this.language.text('home.faster'), this.language.text('home.sharper')],
+        ladder: exploreLadder,
         index: ei,
-        level: EXPLORER_MODES[ei],
+        level: exploreLadder[ei],
         fraction: notchPercent(ei, EXPLORER_MODES.length) / 100
       }
     ];
@@ -1069,12 +1074,12 @@ export class HomeComponent implements OnInit, OnDestroy {
   public runTask(): void {
     const goal = this.taskGoal().trim();
     if (!goal) {
-      this.errorMessage.set('Please enter a task goal before running.');
+      this.errorMessage.set(this.language.text('home.enterGoalError'));
       return;
     }
 
     if (!this.isReady()) {
-      this.errorMessage.set('System prerequisites are not satisfied. Please review System Setup first.');
+      this.errorMessage.set(this.language.text('home.prerequisitesError'));
       this.activeTab.set('diagnostics');
       return;
     }
@@ -1103,7 +1108,7 @@ export class HomeComponent implements OnInit, OnDestroy {
           console.error('Failed to submit task from home page:', err);
           this.isSubmitting.set(false);
           this.errorMessage.set(
-            err?.error?.detail || 'Failed to submit task. Please check server connection.'
+            err?.error?.detail || this.language.text('home.submitError')
           );
         }
       });

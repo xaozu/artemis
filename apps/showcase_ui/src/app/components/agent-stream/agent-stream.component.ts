@@ -20,6 +20,7 @@ import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { AgentService, StartupProgressEvent } from '../../services/agent.service';
+import { UiLanguageService } from '../../core/services/ui-language.service';
 import { Session, ModelInfo, SessionUsage } from '../../core/models/session.model';
 import { MarkdownSegment, MarkdownLine, NoteMilestone, ParsedNote } from '../../core/models/markdown.model';
 import { OverlayModule, ConnectedPosition } from '@angular/cdk/overlay';
@@ -240,6 +241,7 @@ export type { MarkdownSegment, MarkdownLine, NoteMilestone, ParsedNote, StreamRe
 })
 export class AgentStreamComponent implements AfterViewInit {
   public agentService = inject(AgentService);
+  public language = inject(UiLanguageService);
   private http = inject(HttpClient);
   private destroyRef = inject(DestroyRef);
   private zone = inject(NgZone);

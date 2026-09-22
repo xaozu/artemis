@@ -857,7 +857,37 @@ def test_verify_credentials_calls_endpoint_providers_by_url(temp_trace_env):
     assert "base_url" not in calls["google"].kwargs
 
 
-def test_invalid_primary_credential_blocks_and_redacts_message(temp_trace_env):
+def test_openai_proxy_key_is_checked_at_proxy_once(temp_trace_env, monkeypatch):
+    """An OpenAI-compatible proxy must receive the configured key, not api.openai.com."""
+    proxy_url = "https://proxy.example/v1"
+    monkeypatch.setenv("OPENAI_BASE_URL", proxy_url)
+    validate = AsyncMock(return_value=(True, "verified"))
+    cred = _probe(
+        "gemini_api_key",
+        ProbeStatus.PASS,
+        category=ProbeCategory.CREDENTIALS,
+        metadata={
+            "providers": [
+                {"provider": "openai", "label": "ChatGPT", "raw_key": "SECRET-PROXY"},
+                {"provider": "custom", "label": "Custom OpenAI Endpoint", "raw_key": proxy_url},
+            ],
+            "api_keys": {"openai": "SECRET-PROXY"},
+        },
+    )
+    probes = [p for p in _healthy_probes() if p.id != "gemini_api_key"] + [cred]
+    result = _run(probes, validate=validate, verify_credentials=True)
+
+    assert result["verdict"] == "ready"
+    assert len(result["credentials"]) == 1
+    validate.assert_awaited_once_with(
+        "openai", "SECRET-PROXY", base_url=proxy_url, timeout=12.0
+    )
+    assert "SECRET-PROXY" not in repr(result)
+
+
+def test_invalid_primary_credential_blocks_and_redacts_message(temp_trace_env, monkeypatch):
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
     async def _validate(provider, api_key, timeout=12.0):
         if provider == "google":
             return False, f"Gemini API verification failed (400): key {api_key} invalid"
@@ -888,7 +918,9 @@ def test_invalid_primary_credential_blocks_and_redacts_message(temp_trace_env):
     assert "Gemini key verification" in result["summary"]
 
 
-def test_invalid_secondary_credential_only_degrades(temp_trace_env):
+def test_invalid_secondary_credential_only_degrades(temp_trace_env, monkeypatch):
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+
     async def _validate(provider, api_key, timeout=12.0):
         return (provider != "openai", "ok" if provider != "openai" else "401 unauthorized")
 

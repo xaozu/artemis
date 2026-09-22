@@ -376,11 +376,19 @@ async def _verify_credentials(cred_result: ProbeResult | None) -> list[dict[str,
         return []
     metadata = cred_result.metadata
     api_keys = metadata.get("api_keys") or {}
+    openai_base_url = os.environ.get("OPENAI_BASE_URL", "").strip()
     targets: list[tuple[str, str, str]] = []
     for entry in metadata.get("providers") or []:
         provider = str(entry.get("provider") or "").strip()
         raw_key = entry.get("raw_key") or api_keys.get(provider) or ""
         if not provider or not raw_key:
+            continue
+        # OpenAI 兼容接口由 openai 项用真实密钥验证，避免再无密钥重复检查一次。
+        if (
+            provider == "custom"
+            and api_keys.get("openai")
+            and str(raw_key).rstrip("/") == openai_base_url.rstrip("/")
+        ):
             continue
         targets.append((provider, str(entry.get("label") or provider), str(raw_key)))
     if api_keys.get("ocr"):
@@ -397,6 +405,13 @@ async def _verify_credentials(cred_result: ProbeResult | None) -> list[dict[str,
                 timeout=CREDENTIAL_CHECK_TIMEOUT_SECONDS,
             )
             if provider in _ENDPOINT_PROVIDERS
+            else validate_api_key(
+                provider,
+                key,
+                base_url=openai_base_url,
+                timeout=CREDENTIAL_CHECK_TIMEOUT_SECONDS,
+            )
+            if provider == "openai" and openai_base_url
             else validate_api_key(provider, key, timeout=CREDENTIAL_CHECK_TIMEOUT_SECONDS)
             for provider, _label, key in targets
         ),

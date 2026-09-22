@@ -1,0 +1,148 @@
+<!-- 实体设备录制页：从物理触摸得到步骤，编辑后再显式保存和回放。 -->
+<main class="workflows-page">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">ARTEMIS · WORKFLOWS</p>
+      <h1>{{ t('title') }}</h1>
+      <p>{{ t('intro') }}</p>
+    </div>
+  </header>
+
+  @if (error()) { <div class="notice error" role="alert">{{ error() }}</div> }
+  @if (message()) { <div class="notice success" role="status">{{ message() }}</div> }
+
+  <section class="record-panel">
+    <div class="section-heading">
+      <h2>{{ t('start') }}</h2>
+      @if (recording()?.active) { <span class="live-dot">{{ t('recording') }}</span> }
+    </div>
+    <div class="controls">
+      <label class="device-select">
+        <span>{{ t('device') }}</span>
+        <select [(ngModel)]="selectedDevice" [disabled]="!!recording()?.active || !!run() && run()?.status === 'running'">
+          @for (device of devices(); track device.serial) {
+            <option [value]="device.serial">{{ device.model || 'Android' }} · {{ device.serial }}{{ device.is_busy ? ' · busy' : '' }}</option>
+          }
+        </select>
+      </label>
+      <button type="button" class="quiet" (click)="refreshDevices()">{{ t('refresh') }}</button>
+      @if (recording()?.active) {
+        <button type="button" class="stop" [disabled]="busy()" (click)="stopRecording()">{{ t('stop') }}</button>
+      } @else {
+        <button type="button" class="primary" [disabled]="busy() || !!recording() || run()?.status === 'running'" (click)="startRecording()">{{ t('start') }}</button>
+      }
+      @if (recording()) { <button type="button" class="delete" [disabled]="busy()" (click)="discardRecording()">{{ t('discard') }}</button> }
+    </div>
+    <p class="help">{{ t('physicalNote') }}</p>
+  </section>
+
+  <div class="two-column">
+    <section class="editor-panel">
+      <div class="section-heading">
+        <h2>{{ t('steps') }} <span class="count">{{ steps().length }}</span></h2>
+        @if (recording()) { <span class="record-tag">{{ t('recorded') }} · {{ recording()?.device_serial }}</span> }
+      </div>
+
+      @if (!recording()?.active && steps().length) {
+        <div class="parameterize">
+          <p>{{ t('selectHint') }}</p>
+          <div class="parameter-fields">
+            <label><span>{{ t('text') }}</span><input [(ngModel)]="replacementText" [placeholder]="t('replacementText')"></label>
+            <label><span>{{ t('parameter') }}</span><input [(ngModel)]="replacementParameter" [placeholder]="t('replacementParameter')"></label>
+            <button type="button" class="secondary" (click)="replaceSelectedWithText()">{{ t('replace') }}</button>
+          </div>
+        </div>
+      }
+
+      <ol class="step-list">
+        @for (step of steps(); track $index; let index = $index) {
+          <li class="step-row">
+            <div class="step-main">
+              <label class="step-select" [title]="t('select')">
+                <input type="checkbox" [checked]="selected().has(index)" [disabled]="!!recording()?.active || step.type !== 'tap'" (change)="toggleSelected(index)">
+              </label>
+              <span class="step-number">{{ index + 1 }}</span>
+              <strong>{{ stepName(step.type) }}</strong>
+              @if (step.type === 'tap' || step.type === 'long_press' || step.type === 'swipe') {
+                <span class="coordinates">{{ ((step.x || 0) * 100).toFixed(1) }}%, {{ ((step.y || 0) * 100).toFixed(1) }}%
+                  @if (step.type === 'swipe') { → {{ ((step.x2 || 0) * 100).toFixed(1) }}%, {{ ((step.y2 || 0) * 100).toFixed(1) }}% }
+                </span>
+              }
+              @if (!recording()?.active) {
+                <div class="step-buttons">
+                  <button type="button" [title]="t('up')" [disabled]="index === 0" (click)="moveStep(index, -1)">↑</button>
+                  <button type="button" [title]="t('down')" [disabled]="index === steps().length - 1" (click)="moveStep(index, 1)">↓</button>
+                  <button type="button" [title]="t('remove')" (click)="removeStep(index)">×</button>
+                </div>
+              }
+            </div>
+            @if (!recording()?.active) {
+              <div class="step-fields">
+                <label><span>{{ t('delay') }}</span><input type="number" min="0" max="30000" [(ngModel)]="step.delay_ms"></label>
+                @if (step.type === 'swipe' || step.type === 'long_press' || step.type === 'wait' || step.type === 'assert_text') {
+                  <label><span>{{ t('duration') }}</span><input type="number" min="1" max="10000" [(ngModel)]="step.duration_ms"></label>
+                }
+                @if (step.type === 'text' || step.type === 'assert_text') {
+                  <label class="wide"><span>{{ t('text') }}</span><input [(ngModel)]="step.text"></label>
+                }
+                @if (step.type === 'text') {
+                  <label><span>{{ t('parameter') }}</span><input [(ngModel)]="step.parameter"></label>
+                  <label class="checkbox-label"><input type="checkbox" [(ngModel)]="step.clear_existing"><span>{{ t('clear') }}</span></label>
+                }
+              </div>
+            }
+          </li>
+        } @empty {
+          <li class="empty">{{ t('empty') }}</li>
+        }
+      </ol>
+
+      @if (!recording()?.active) {
+        <div class="add-actions">
+          <button type="button" class="quiet" (click)="addStep('wait')">+ {{ t('addWait') }}</button>
+          <button type="button" class="quiet" (click)="addStep('assert_text')">+ {{ t('addAssert') }}</button>
+          <button type="button" class="quiet" (click)="addStep('text')">+ {{ t('addText') }}</button>
+          <button type="button" class="quiet" (click)="addStep('back')">+ {{ t('back') }}</button>
+          <button type="button" class="quiet" (click)="addStep('home')">+ {{ t('home') }}</button>
+        </div>
+        <div class="save-actions">
+          <label class="workflow-name"><span>{{ t('name') }}</span><input [(ngModel)]="name" maxlength="100"></label>
+          <button type="button" class="primary" [disabled]="busy() || !steps().length" (click)="save()">{{ t('save') }}</button>
+          @if (templateId()) { <button type="button" class="delete" [disabled]="busy()" (click)="deleteTemplate()">{{ t('delete') }}</button> }
+        </div>
+      }
+    </section>
+
+    <aside class="side-panel">
+      <section class="library-panel">
+        <div class="section-heading"><h2>{{ t('library') }}</h2><button type="button" class="quiet" (click)="refreshTemplates()">{{ t('refreshTemplates') }}</button></div>
+        <div class="template-list">
+          @for (template of templates(); track template.id) {
+            <button type="button" class="template-card" [class.active]="templateId() === template.id" [disabled]="!!recording()" (click)="loadTemplate(template)">
+              <strong>{{ template.name }}</strong>
+              <span>{{ template.steps.length }} {{ t('steps') }} · {{ template.device_serial }}</span>
+            </button>
+          } @empty { <p class="empty">{{ t('noTemplates') }}</p> }
+        </div>
+      </section>
+
+      @if (steps().length && !recording()?.active) {
+        <section class="replay-panel">
+          <h2>{{ t('run') }}</h2>
+          @for (parameter of parameters(); track parameter) {
+            <label class="run-param"><span>{{ parameter }}</span><input [(ngModel)]="parameterValues[parameter]"></label>
+          }
+          <button type="button" class="primary" [disabled]="busy() || run()?.status === 'running'" (click)="replay()">{{ t('replay') }}</button>
+          @if (run()?.status === 'running') { <button type="button" class="stop" (click)="cancelReplay()">{{ t('cancel') }}</button> }
+          @if (run(); as result) {
+            <div class="run-status" [class.failed]="result.status === 'failed'" role="status">
+              <strong>{{ t('status') }}：{{ t(result.status) }}</strong>
+              <span>{{ result.step_index }} / {{ result.step_count }}</span>
+              @if (result.error) { <p>{{ result.error }}</p> }
+            </div>
+          }
+        </section>
+      }
+    </aside>
+  </div>
+</main>

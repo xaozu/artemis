@@ -89,7 +89,8 @@ limitations under the License.
               @if (getDeviceSerial(session)) {
                 <span class="task-time-divider">·</span>
               }
-              <span class="task-time">{{ session.start_time * 1000 | date:'shortTime' }}</span>
+              <!-- 任务时间固定显示为北京时间，避免跟随浏览器所在时区变化。 -->
+              <span class="task-time" title="北京时间">{{ session.start_time * 1000 | date:'HH:mm':'+0800' }}</span>
               @if (getTaskStatus(session) === 'running' || getTaskStatus(session) === 'paused') {
                 <button
                   type="button"
@@ -120,7 +121,7 @@ limitations under the License.
           </div>
           <div class="task-card-footer">
             <span class="task-id" [title]="session.session_id">ID: {{ session.session_id }}</span>
-            <span class="task-date">{{ session.start_time * 1000 | date:'MM/dd/yy' }}</span>
+            <span class="task-date">{{ session.start_time * 1000 | date:'yyyy-MM-dd':'+0800' }}</span>
           </div>
         </div>
       }
@@ -159,7 +160,7 @@ limitations under the License.
                   @if (getDeviceSerial(session)) {
                     <span class="task-time-divider">·</span>
                   }
-                  <span class="task-time">{{ session.start_time * 1000 | date:'shortTime' }}</span>
+                  <span class="task-time" title="北京时间">{{ session.start_time * 1000 | date:'HH:mm':'+0800' }}</span>
                   @if (getTaskStatus(session) !== 'running' && getTaskStatus(session) !== 'paused') {
                     <button
                       type="button"
@@ -179,7 +180,7 @@ limitations under the License.
               </div>
               <div class="task-card-footer">
                 <span class="task-id" [title]="session.session_id">ID: {{ session.session_id }}</span>
-                <span class="task-date">{{ session.start_time * 1000 | date:'MM/dd/yy' }}</span>
+                <span class="task-date">{{ session.start_time * 1000 | date:'yyyy-MM-dd':'+0800' }}</span>
               </div>
             </div>
           }

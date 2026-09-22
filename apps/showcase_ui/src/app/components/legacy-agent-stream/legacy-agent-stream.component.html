@@ -35,7 +35,7 @@ limitations under the License.
           <option
             [value]="session.session_id"
             >
-            {{ session.initial_goal || 'Unnamed Goal' }} ({{ session.device_serial ? session.device_serial + ' · ' : '' }}{{ session.start_time * 1000 | date:'short' }})
+            {{ session.initial_goal || 'Unnamed Goal' }} ({{ session.device_serial ? session.device_serial + ' · ' : '' }}{{ session.start_time * 1000 | date:'yyyy-MM-dd HH:mm':'+0800' }} 北京时间)
           </option>
         }
       </select>
@@ -65,7 +65,7 @@ limitations under the License.
                 <span class="index-badge">#{{ i + 1 }}</span>
                 <span class="type-badge" [ngClass]="log.type">{{ log.type }}</span>
               </div>
-              <span class="timestamp">{{ log.timestamp | date:'HH:mm:ss.SSS' }}</span>
+              <span class="timestamp" title="北京时间">{{ log.timestamp | date:'HH:mm:ss.SSS':'+0800' }}</span>
             </div>
             <!-- Render Step Events in a beautiful, structured layout -->
             @if (isStepEvent(log.type)) {

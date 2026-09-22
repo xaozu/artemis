@@ -36,7 +36,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from artemis.context import ArtemisContext
 from artemis.memory.step_memory import JobKey, StepMemoryService
-from artemis.services.llm import RobustChatModelWrapper, get_google_llm, get_llm
+from artemis.services.llm import RobustChatModelWrapper, get_cached_raw_model, get_google_llm, get_llm
 from artemis.services.token_meter import record_llm_usage
 from artemis.utils.logger import get_logger
 from artemis.utils.task_tree import format_actions_clean
@@ -161,16 +161,25 @@ class VisualStepSummarizer(StepMemoryService):
             flush_timeout_s=flush_timeout_s,
         )
 
-        # Initialize lightweight VLM: prioritize explicit model_name
+        # 显式指定轻量模型时，沿用摘要角色配置的服务商，避免绕过代理直连 Gemini。
         target_model = model_name or "gemini-2.5-flash-lite"
         self._model_name = target_model
-        try:
-            if model_name:
+        if model_name:
+            llm_config = getattr(ctx, "llm_config", None)
+            provider = (
+                getattr(llm_config.get_agent("summarizer"), "provider", None)
+                if llm_config is not None else None
+            )
+            if not isinstance(provider, str):
+                from artemis.config.llm import get_default_llm_config
+
+                provider = get_default_llm_config().get_agent("summarizer").provider
+            self._llm = get_cached_raw_model(provider, target_model, temperature=0.0)
+        else:
+            try:
+                self._llm = get_llm(ctx, name="summarizer")
+            except Exception:
                 self._llm = get_google_llm(model_name=target_model, temperature=0.0)
-            else:
-                self._llm = get_llm(ctx, name="summarizer", is_utils=True)
-        except Exception:
-            self._llm = get_google_llm(model_name=target_model, temperature=0.0)
         try:
             configured = getattr(self._llm, "model", None) or getattr(self._llm, "model_name", None)
             if isinstance(configured, str) and configured:

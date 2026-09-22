@@ -81,9 +81,7 @@ from artemis.mcp.action_executor import McpActionExecutor
 from artemis.mcp.observation import observe
 from artemis.memory.transcript import PRO_UI_LIST_MARKER, TranscriptLedger, mark_ephemeral
 from artemis.services.llm import (
-    RobustChatModelWrapper,
     acomplete,
-    get_google_llm,
     get_llm,
     invoke_llm_with_timeout_message,
 )
@@ -282,9 +280,8 @@ class FlashRunner:
         try:
             return get_llm(self.ctx, name="operator")
         except Exception as e:
-            logger.warning(f"Failed to get operator LLM from config, using default: {e}")
-
-            return RobustChatModelWrapper(get_google_llm(model_name="gemini-2.5-flash"), self.ctx)
+            # 模型配置出错时保留原始原因，避免静默切到未配置密钥的 Gemini。
+            raise RuntimeError(f"Flash operator model initialization failed: {e}") from e
 
     def _render_system_prompt(self, tools_declaration: list) -> str:
         """Renders the system prompt from the flash_runner.md template.

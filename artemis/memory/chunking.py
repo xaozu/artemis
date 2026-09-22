@@ -321,19 +321,34 @@ class StepCapsuleLens(StepLens):
                 " must cover the full step range without gaps or overlaps. Return only JSON."
             )
 
+    def _get_provider(self) -> str:
+        """历史摘要沿用摘要角色的服务商和认证配置。"""
+        llm_config = getattr(self._ctx, "llm_config", None) if self._ctx is not None else None
+        provider = (
+            getattr(llm_config.get_agent("summarizer"), "provider", None)
+            if llm_config is not None else None
+        )
+        if not isinstance(provider, str):
+            from artemis.config.llm import get_default_llm_config
+
+            provider = get_default_llm_config().get_agent("summarizer").provider
+        return provider
+
     def _get_llm(self):
         if self._llm is None:
-            from artemis.services.llm import get_google_llm
+            from artemis.services.llm import get_cached_raw_model
 
-            self._llm = get_google_llm(model_name=self._model_name, temperature=0.0)
+            self._llm = get_cached_raw_model(
+                self._get_provider(), self._model_name, temperature=0.0
+            )
         return self._llm
 
     def _get_fallback_llm(self):
         if self._fallback_llm is None and self._fallback_model_name:
-            from artemis.services.llm import get_google_llm
+            from artemis.services.llm import get_cached_raw_model
 
-            self._fallback_llm = get_google_llm(
-                model_name=self._fallback_model_name, temperature=0.0
+            self._fallback_llm = get_cached_raw_model(
+                self._get_provider(), self._fallback_model_name, temperature=0.0
             )
         return self._fallback_llm
 

@@ -7,12 +7,13 @@
   // 1. Global Default Model (Applied to all sub-agents unless overridden below)
   // ------------------------------------------------------------------------------
   "default": {
-    "provider": "google",
-    "model": "gemini-3.8-flash",
+    // 千面云通过 OpenAI 兼容协议提供 Gemini 模型，Base URL 由 .env 配置。
+    "provider": "openai",
+    "model": "gemini-3.7-flash",
     "thinking_level": "medium",
     "fallback": {
-      "provider": "google",
-      "model": "gemini-3.7-flash",
+      "provider": "openai",
+      "model": "gemini-3.6-flash",
       "thinking_level": "medium"
     }
   },
@@ -74,11 +75,13 @@
     // CRITICAL REQUIREMENT: Standard LLMs (including standard Gemini Flash, GPT-4o, Claude 3.7) lack sub-pixel spatial coordinate fine-tuning.
     // To achieve accurate [x, y] point and bounding box localization, this node MUST use specialized Gemini ER (Embodied Reasoning / Robotics) models:
     // e.g., "gemini-robotics-er-2-preview". Non-ER models will fail spatial coordinate detection.
+    // 千面云当前公开模型列表不含 Gemini ER，暂用 3.7 Flash 兼容；复杂自绘界面的坐标定位精度可能下降。
     "object_detector": {
-      "model": "gemini-robotics-er-2-preview",
+      "provider": "openai",
+      "model": "gemini-3.7-flash",
       "fallback": {
-        "provider": "google",
-        "model": "gemini-robotics-er-2-preview"
+        "provider": "openai",
+        "model": "gemini-3.6-flash"
       }
     },
 
@@ -95,9 +98,10 @@
 
     // 🔽 Hopper: Fast lightweight package name locator
     "hopper": {
+      "provider": "openai",
       "model": "gemini-3.5-flash-lite",
       "fallback": {
-        "provider": "google",
+        "provider": "openai",
         "model": "gemini-3.1-flash-lite"
       }
     },

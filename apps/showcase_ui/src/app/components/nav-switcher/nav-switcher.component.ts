@@ -49,6 +49,11 @@ import { UiLanguageService } from '../../core/services/ui-language.service';
         <span class="material-symbols-outlined tab-icon">gesture</span>
         <span class="tab-label">{{ language.text('nav.workflows') }}</span>
       </a>
+      <a routerLink="/explorations" routerLinkActive="active" class="nav-tab-btn"
+        [title]="language.text('nav.explorationsTitle')">
+        <span class="material-symbols-outlined tab-icon">account_tree</span>
+        <span class="tab-label">{{ language.text('nav.explorations') }}</span>
+      </a>
       <button type="button" class="nav-tab-btn language-switch"
         (click)="toggleLanguage()"
         [title]="language.language() === 'en' ? language.text('nav.switchToChinese') : language.text('nav.switchToEnglish')"

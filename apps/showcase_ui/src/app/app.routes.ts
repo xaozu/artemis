@@ -19,11 +19,13 @@ import { HomeComponent } from './pages/home/home.component';
 import { WorkspaceComponent } from './pages/workspace/workspace.component';
 import { LegacyWorkspaceComponent } from './pages/legacy-workspace/legacy-workspace.component';
 import { WorkflowsComponent } from './pages/workflows/workflows.component';
+import { ExplorationsComponent } from './pages/explorations/explorations.component';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
   { path: 'workspace', component: WorkspaceComponent },
   { path: 'workflows', component: WorkflowsComponent },
+  { path: 'explorations', component: ExplorationsComponent },
   { path: 'check', component: LegacyWorkspaceComponent },
   { path: '**', redirectTo: '' }
 ];

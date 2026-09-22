@@ -376,6 +376,15 @@ class UIAutomatorClient:
             logger.debug(f"UIAutomator2 set_clipboard failed: {e}")
             return False
 
+    def set_sensitive_clipboard(self, text: str) -> bool:
+        """输入角色凭据或任务参数时，不把失败异常中的输入内容写入日志。"""
+        try:
+            self._ensure_connected().set_clipboard(text)
+            return True
+        except Exception:
+            logger.warning("UIAutomator2 sensitive clipboard input failed")
+            return False
+
     def get_hierarchy(self) -> str:
         """Get the UI hierarchy XML from the device.
 

@@ -1,0 +1,103 @@
+<main class="explorations-page">
+  <header>
+    <p class="eyebrow">ARTEMIS · EXPLORATION</p>
+    <h1>{{ t('title') }}</h1>
+    <p>{{ t('intro') }}</p>
+  </header>
+  @if (error()) { <p class="notice" role="alert">{{ error() }}</p> }
+
+  <section class="panel">
+    <h2>{{ t('create') }}</h2>
+    <div class="fields">
+      <label>{{ t('taskName') }}<input [(ngModel)]="name" maxlength="100"></label>
+      <label>{{ t('package') }}<input [(ngModel)]="packageName" placeholder="com.example.app"></label>
+      <label>{{ t('device') }}<select [(ngModel)]="deviceSerial">
+        <option value="">{{ t('device') }}</option>
+        @for (device of devices(); track device.serial) { <option [value]="device.serial">{{ device.model || 'Android' }} · {{ device.serial }}</option> }
+      </select></label>
+      <label>{{ t('depth') }}<input type="number" min="1" max="8" [(ngModel)]="maxDepth"></label>
+      <button class="primary" [disabled]="busy()" (click)="create()">{{ t('add') }}</button>
+    </div>
+  </section>
+
+  <div class="columns">
+    <aside class="panel task-list">
+      <h2>{{ t('tasks') }}</h2>
+      @for (item of tasks(); track item.id) {
+        <button class="task-card" [class.selected]="item.id === task()?.id" (click)="select(item.id)">
+          <strong>{{ item.name }}</strong><span>{{ item.package }}</span>
+        </button>
+      } @empty { <p class="muted">{{ t('empty') }}</p> }
+    </aside>
+
+    @if (task(); as current) {
+      <div class="detail">
+        <section class="panel">
+          <div class="heading"><h2>{{ current.name }}</h2><button (click)="downloadDocument()">{{ t('document') }}</button></div>
+          <p class="muted">{{ current.package }} · {{ current.nodes.length }} {{ t('pageCount') }} · {{ current.edges.length }} {{ t('branchCount') }}</p>
+          <div class="fields">
+            <label>{{ t('role') }}<select [(ngModel)]="role" (ngModelChange)="select(current.id)">
+              @for (item of current.roles; track item.name) { <option [value]="item.name">{{ item.name }}{{ item.has_credentials ? ' ✓' : '' }}</option> }
+            </select></label>
+            <button class="primary" [disabled]="busy() || current.run?.status === 'running'" (click)="run('explore')">{{ t('explore') }}</button>
+            <button [disabled]="busy() || current.run?.status === 'running'" (click)="run('replay')">{{ t('all') }}</button>
+            @if (current.run?.status === 'running') { <button class="danger" (click)="stop()">{{ t('stop') }}</button> }
+          </div>
+          @if (current.run; as runState) {
+            <p class="run-state" role="status">{{ t('status') }}：{{ statusLabel(runState.status) }} · {{ runState.completed }} {{ t('branchCount') }}
+              @if (runState.error) { · {{ runState.error }} }
+            </p>
+          }
+          <p class="muted">{{ t('modelNote') }} {{ current.module_source }}</p>
+          <p class="muted">{{ t('inputNote') }}</p>
+        </section>
+
+        <section class="panel">
+          <h2>{{ t('roles') }}</h2>
+          <div class="fields">
+            <label>{{ t('role') }}<input [(ngModel)]="roleName" autocomplete="off"></label>
+            <label>{{ t('username') }}<input [(ngModel)]="username" autocomplete="off"></label>
+            <label>{{ t('password') }}<input type="password" [(ngModel)]="password" autocomplete="new-password"></label>
+            <button [disabled]="busy() || current.run?.status === 'running'" (click)="saveRole()">{{ t('saveRole') }}</button>
+          </div>
+          <p class="muted">{{ t('credentialNote') }}</p>
+        </section>
+
+        <section class="panel">
+          <h2>{{ t('module') }}</h2>
+          <div class="fields">
+            <select [(ngModel)]="selectedModule">
+              @for (item of moduleNames(); track item) { <option [value]="item">{{ item }}</option> }
+            </select>
+            <button [disabled]="!selectedModule || busy() || current.run?.status === 'running'" (click)="run('replay', selectedModule)">{{ t('runModule') }}</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>{{ t('tree') }}</h2>
+          @for (node of current.nodes; track node.id) {
+            @if (node.role === role) {
+              <article class="node" [style.margin-left.px]="node.depth * 18">
+                <div class="node-heading"><strong>{{ node.depth === 0 ? t('root') : node.path[node.path.length - 1].label }}</strong><span>{{ node.title }}</span></div>
+                @for (edge of edgesFor(node.id); track edge.id) {
+                  <div class="edge" [class.blocked]="edge.status === 'blocked'">
+                    <span class="edge-label">↳ {{ edge.action.label }}</span>
+                    <span class="badge">{{ statusLabel(edge.status) }}</span>
+                    @if (edge.reason) { <span class="reason">{{ edge.reason }}</span> }
+                    <label>{{ t('module') }}<input [(ngModel)]="moduleEdits[edge.id]"></label>
+                    <button [disabled]="current.run?.status === 'running'" (click)="saveModule(edge)">{{ t('saveModule') }}</button>
+                    @if (edge.action.kind === 'input') {
+                      <label>{{ t('inputValue') }}<input [(ngModel)]="inputEdits[edge.id]"></label>
+                      <button [disabled]="current.run?.status === 'running'" (click)="saveInput(edge)">{{ t('saveInput') }}</button>
+                    }
+                    @if (edge.status === 'blocked' && edge.action.kind !== 'input') { <button [disabled]="current.run?.status === 'running'" (click)="retry(edge)">{{ t('retry') }}</button> }
+                  </div>
+                }
+              </article>
+            }
+          }
+        </section>
+      </div>
+    }
+  </div>
+</main>

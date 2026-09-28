@@ -12,6 +12,8 @@ export interface ExplorationEdge {
   module: string;
   status: 'pending' | 'explored' | 'blocked' | 'unchanged';
   reason: string | null;
+  /** 受阻后模型给出的建议；只供人工参考。 */
+  analysis?: string;
 }
 
 export interface ExplorationNode {

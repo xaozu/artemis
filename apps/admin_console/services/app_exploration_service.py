@@ -99,6 +99,34 @@ def _structure_fingerprint(elements: list[dict[str, Any]], package: str) -> str:
     ).hexdigest()[:20]
 
 
+def _page_matches(
+    node: dict[str, Any],
+    elements: list[dict[str, Any]],
+    package: str,
+    credentials: dict[str, str] | None,
+) -> bool:
+    """页面文字变化时仍接受相同的控件结构，避免把动态首页误判为路径失效。"""
+    cleaned = _redact_elements(elements, credentials)
+    if _fingerprint(cleaned, package) == node["fingerprint"]:
+        return True
+    if not any(item.get("package") == package and item.get("resource-id") for item in cleaned):
+        return False
+    return _structure_fingerprint(cleaned, package) == node.get("structure_fingerprint")
+
+
+def _invoke_optional_model(model: Any, messages: list[Any], timeout: float) -> Any | None:
+    """探索附加建议失败时直接降级，避免模型故障暂停其他设备任务。"""
+    from artemis.services.llm import with_fallback
+
+    async def request() -> Any:
+        return await model.ainvoke(messages)
+
+    async def unavailable() -> None:
+        return None
+
+    return asyncio.run(asyncio.wait_for(with_fallback(request, unavailable), timeout=timeout))
+
+
 def _action_label(
     element: dict[str, Any], elements: list[dict[str, Any]], bounds: tuple[int, int, int, int]
 ) -> str:
@@ -256,7 +284,7 @@ def _scrub_saved_text(task: dict[str, Any], secrets: tuple[str, ...]) -> dict[st
         for key in ("label", "text", "description"):
             if key in edge["action"]:
                 edge["action"][key] = scrub(edge["action"][key])
-        for key in ("module", "reason"):
+        for key in ("module", "reason", "analysis"):
             if edge.get(key):
                 edge[key] = scrub(edge[key])
     task["parameters"] = {key: scrub(value) for key, value in task.get("parameters", {}).items()}
@@ -441,6 +469,7 @@ class AppExplorationService:
                 raise ValueError("只能重试受阻分支")
             edge["status"] = "pending"
             edge["reason"] = None
+            edge.pop("analysis", None)
             self._write(task)
             return task
 
@@ -458,6 +487,7 @@ class AppExplorationService:
             task["parameters"][parameter] = value
             if edge["status"] == "blocked" and edge.get("reason") == "需要填写输入参数":
                 edge["status"], edge["reason"] = "pending", None
+                edge.pop("analysis", None)
             self._write(task)
             return task
 
@@ -594,7 +624,7 @@ class AppExplorationService:
             return "需要验证码或二次验证", False
         return None, True
 
-    def _reset(
+    def _prepare_app(
         self,
         driver: AndroidAdbDriver,
         ui: UIAutomatorClient,
@@ -602,18 +632,18 @@ class AppExplorationService:
         credentials: dict[str, str] | None,
         role: str,
     ) -> str | None:
-        """每条分支从应用启动页重新开始，保证路径可重复。"""
-        asyncio.run(driver.stop_app(package))
-        if not asyncio.run(driver.launch_app(package)):
-            raise RuntimeError("无法打开目标 App")
-        time.sleep(1)
+        """一次运行只准备一次 App；已在前台时沿用当前会话。"""
+        if asyncio.run(driver.get_current_package()) != package:
+            if not asyncio.run(driver.launch_app(package)):
+                raise RuntimeError("无法打开目标 App")
+            time.sleep(1)
         blocker, logged_in = self._login(driver, ui, credentials)
         foreground = asyncio.run(driver.get_current_package())
         if foreground and foreground != package:
             return "打开 App 后进入外部应用或系统页面"
         identity = (driver.device_id, package)
         if credentials:
-            # force-stop 不清除登录态。未亲自登录时不能把旧账号页面归到新角色。
+            # 重新打开 App 不清除登录态；只有亲自完成登录才能确认角色。
             credential_id = hashlib.sha256(
                 json.dumps(credentials, sort_keys=True).encode()
             ).hexdigest()
@@ -626,6 +656,141 @@ class AppExplorationService:
             return "当前 App 保留了其他角色的登录状态；请先在手机退出账号"
         return blocker
 
+    def _reach_node(
+        self,
+        task: dict[str, Any],
+        role: str,
+        parent: dict[str, Any],
+        driver: AndroidAdbDriver,
+        ui: UIAutomatorClient,
+        credentials: dict[str, str] | None,
+        cancel: threading.Event,
+        current_node_id: str | None,
+        *,
+        strict: bool = True,
+    ) -> None:
+        """在当前 App 会话里返回到目标分支的公共祖先，再沿已记录路径前进。"""
+        package = task["package"]
+        path = parent["path"]
+        ancestors = [
+            node
+            for node in task["nodes"]
+            if node["role"] == role
+            and node["path"] == path[: node["depth"]]
+            and node["depth"] <= len(path)
+        ]
+        current_node = next((node for node in task["nodes"] if node["id"] == current_node_id), None)
+        for attempt in range(task["max_depth"] + 2):
+            if cancel.is_set():
+                return
+            screen = ui.get_screen_data()
+            cleaned = _redact_elements(screen.elements, credentials)
+            current_fingerprint = _fingerprint(cleaned, package)
+            # 精确页面优先；动态文字变化时才退到控件结构匹配。
+            on_sibling = (
+                attempt == 0
+                and current_node is not None
+                and current_node["path"] != path[: current_node["depth"]]
+                and _page_matches(current_node, screen.elements, package, credentials)
+            )
+            exact = (
+                []
+                if on_sibling
+                else [node for node in ancestors if node["fingerprint"] == current_fingerprint]
+            )
+            matched = max(exact, key=lambda node: node["depth"], default=None)
+            if matched is None and not on_sibling:
+                structural = [
+                    node
+                    for node in ancestors
+                    if _page_matches(node, screen.elements, package, credentials)
+                ]
+                # 多层页面同构时无法确认所在层级，先返回到可识别页面。
+                if len({node["depth"] for node in structural}) == 1:
+                    matched = max(structural, key=lambda node: node["depth"])
+            if matched is not None:
+                self._follow_path(
+                    task,
+                    role,
+                    driver,
+                    ui,
+                    path,
+                    credentials,
+                    cancel,
+                    start_index=matched["depth"],
+                    strict=strict,
+                )
+                if cancel.is_set():
+                    return
+                if _page_matches(parent, ui.get_screen_data().elements, package, credentials):
+                    return
+                raise ValueError("返回分支后页面路径已变化")
+            if attempt + 1 < task["max_depth"] + 2:
+                if not asyncio.run(driver.press_key("back")):
+                    raise RuntimeError("无法返回上一级页面")
+                if cancel.wait(0.35):
+                    return
+        raise ValueError("当前会话无法返回该分支，请检查弹窗或页面状态")
+
+    def _analyze_blocker(
+        self,
+        task: dict[str, Any],
+        edge: dict[str, Any],
+        ui: UIAutomatorClient,
+        credentials: dict[str, str] | None,
+    ) -> str:
+        """受阻时只发送脱敏后的入口和少量控件名称，请模型给出排查建议。"""
+        try:
+            from langchain_core.messages import HumanMessage, SystemMessage
+            from artemis.context import ArtemisContext, DeviceContext
+            from artemis.services.llm import get_llm
+
+            screen = ui.get_screen_data()
+            elements = _redact_elements(screen.elements, credentials)
+            labels = [
+                _safe_model_label(_visible_label(item))
+                for item in elements
+                if item.get("package") == task["package"]
+                and item.get("clickable") == "true"
+                and item.get("password") != "true"
+                and "EditText" not in item.get("class", "")
+            ][:12]
+            payload = {
+                "目标入口": _safe_model_label(_hide_secrets(edge["action"]["label"], credentials)),
+                "受阻原因": _safe_model_label(
+                    _hide_secrets(edge.get("reason") or "未知", credentials)
+                ),
+                "当前可点击入口": labels,
+            }
+            context = ArtemisContext(device=DeviceContext(device_id=task["device_serial"]))
+            model = get_llm(context, name="planner")
+            response = _invoke_optional_model(
+                model,
+                [
+                    SystemMessage(
+                        content=(
+                            "分析移动 App 探索受阻原因，给出一条可操作的中文建议，最多120字。"
+                            "不要编造已执行动作，不要建议支付、删除或发送内容。"
+                        )
+                    ),
+                    HumanMessage(content=json.dumps(payload, ensure_ascii=False)),
+                ],
+                timeout=12,
+            )
+            if response is None:
+                return "模型分析暂不可用，请根据受阻原因处理"
+            content = response.content
+            result = (
+                content
+                if isinstance(content, str)
+                else "".join(
+                    str(item.get("text", "")) for item in content if isinstance(item, dict)
+                )
+            )
+            return _hide_secrets(re.sub(r"\s+", " ", result).strip()[:160], credentials)
+        except Exception:
+            return "模型分析暂不可用，请根据受阻原因处理"
+
     def _follow_path(
         self,
         task: dict[str, Any],
@@ -636,24 +801,32 @@ class AppExplorationService:
         credentials: dict[str, str] | None,
         cancel: threading.Event,
         strict: bool = True,
+        start_index: int = 0,
     ) -> None:
         """每次点击前核对已记录的页面，防止动态页面漂移后误点。"""
-        for index, action in enumerate(path):
+        for index in range(start_index, len(path)):
             if cancel.is_set():
                 return
-            key = "fingerprint" if strict else "structure_fingerprint"
-            expected = {
-                node.get(key, node["fingerprint"])
+            action = path[index]
+            expected_nodes = [
+                node
                 for node in task["nodes"]
                 if node["role"] == role and node["path"] == path[:index]
-            }
+            ]
             screen = ui.get_screen_data()
-            actual = (
-                _fingerprint(_redact_elements(screen.elements, credentials), task["package"])
+            matches = (
+                any(
+                    _page_matches(node, screen.elements, task["package"], credentials)
+                    for node in expected_nodes
+                )
                 if strict
-                else _structure_fingerprint(screen.elements, task["package"])
+                else any(
+                    _structure_fingerprint(screen.elements, task["package"])
+                    == node.get("structure_fingerprint", node["fingerprint"])
+                    for node in expected_nodes
+                )
             )
-            if expected and actual not in expected:
+            if expected_nodes and not matches:
                 raise ValueError("路径中的页面已变化")
             self._tap(driver, ui, action, task.get("parameters"))
 
@@ -872,11 +1045,21 @@ class AppExplorationService:
             for edge in task["edges"]
             if edge["role"] == role and edge["action"]["label"] == "登录"
         ]
-        # 每次开始先确认当前登录角色；App 重启后仍可能保留上一次账号。
-        blocker = self._reset(driver, ui, task["package"], credentials, role)
+        # 每次探索只准备一次 App，并确认当前登录角色。
+        blocker = self._prepare_app(driver, ui, task["package"], credentials, role)
         screen = ui.get_screen_data()
         fingerprint = _fingerprint(_redact_elements(screen.elements, credentials), task["package"])
         root = next((item for item in roots if item["fingerprint"] == fingerprint), None)
+        if root is None:
+            # 动态首页的文字变化不应重复创建整棵入口树。
+            root = next(
+                (
+                    item
+                    for item in roots
+                    if _page_matches(item, screen.elements, task["package"], credentials)
+                ),
+                None,
+            )
         if root is None:
             root = self._add_node(
                 task, role, None, [], screen, credentials, enumerate_actions=not bool(blocker)
@@ -885,67 +1068,98 @@ class AppExplorationService:
             if login_edges:
                 for edge in login_edges:
                     edge["status"], edge["reason"] = "blocked", blocker
+                login_edge = login_edges[0]
             else:
-                task["edges"].append(
-                    {
-                        "id": uuid4().hex,
-                        "role": role,
-                        "from_node": root["id"],
-                        "to_node": None,
-                        "action": {"label": "登录", "x": 0, "y": 0},
-                        "module": "登录",
-                        "status": "blocked",
-                        "reason": blocker,
-                    }
-                )
+                login_edge = {
+                    "id": uuid4().hex,
+                    "role": role,
+                    "from_node": root["id"],
+                    "to_node": None,
+                    "action": {"label": "登录", "x": 0, "y": 0},
+                    "module": "登录",
+                    "status": "blocked",
+                    "reason": blocker,
+                }
+                task["edges"].append(login_edge)
+            login_edge["analysis"] = self._analyze_blocker(task, login_edge, ui, credentials)
         else:
             for edge in login_edges:
                 edge["status"], edge["reason"], edge["to_node"] = "explored", None, root["id"]
+                edge.pop("analysis", None)
         with self._mutex:
             self._write(task)
         if blocker:
             return
-        # 每轮最多处理 80 个分支，剩余队列可下次继续，避免复杂应用持续占用设备。
-        budget = 80
-        while budget > 0 and not cancel.is_set():
-            edge = next(
-                (
-                    item
-                    for item in task["edges"]
-                    if item["role"] == role and item["status"] == "pending"
-                ),
+        # 旧版可能为同一任务留下多个首页；只恢复本次匹配首页下的误判分支。
+        reachable_nodes = {root["id"]}
+        for node in sorted(task["nodes"], key=lambda item: item["depth"]):
+            parent_edge = next(
+                (edge for edge in task["edges"] if edge["id"] == node.get("parent_edge")),
                 None,
             )
-            if edge is None:
+            if parent_edge and parent_edge["from_node"] in reachable_nodes:
+                reachable_nodes.add(node["id"])
+        for edge in task["edges"]:
+            if (
+                edge["role"] == role
+                and edge["from_node"] in reachable_nodes
+                and edge["status"] == "blocked"
+                and edge.get("reason") in {"页面路径已变化", "路径中的页面已变化"}
+            ):
+                edge["status"], edge["reason"] = "pending", None
+                edge.pop("analysis", None)
+        with self._mutex:
+            self._write(task)
+        # 每轮最多处理 80 个分支，剩余队列可下次继续，避免复杂应用持续占用设备。
+        budget = 80
+        path_mismatch_count = 0
+        analysis_budget = 3
+        analysis_cache: dict[str, str] = {}
+        current_node_id: str | None = root["id"]
+        while budget > 0 and not cancel.is_set():
+            pending = [
+                item
+                for item in task["edges"]
+                if item["role"] == role
+                and item["from_node"] in reachable_nodes
+                and item["status"] == "pending"
+            ]
+            if not pending:
                 break
+            # 优先处理当前页面的入口，减少返回导航和弹窗状态变化。
+            edge = next(
+                (item for item in pending if item["from_node"] == current_node_id),
+                pending[0],
+            )
             budget -= 1
             parent = next(node for node in task["nodes"] if node["id"] == edge["from_node"])
             try:
-                blocker = self._reset(driver, ui, task["package"], credentials, role)
-                if blocker:
-                    raise ValueError(blocker)
-                self._follow_path(task, role, driver, ui, parent["path"], credentials, cancel)
+                self._reach_node(
+                    task, role, parent, driver, ui, credentials, cancel, current_node_id
+                )
                 if cancel.is_set():
                     return
                 before = ui.get_screen_data()
-                if (
-                    _fingerprint(_redact_elements(before.elements, credentials), task["package"])
-                    != parent["fingerprint"]
-                ):
+                if not _page_matches(parent, before.elements, task["package"], credentials):
                     raise ValueError("页面路径已变化")
+                before_fingerprint = _fingerprint(
+                    _redact_elements(before.elements, credentials), task["package"]
+                )
                 self._tap(driver, ui, edge["action"], task.get("parameters"))
                 screen = ui.get_screen_data()
                 foreground = asyncio.run(driver.get_current_package())
                 if foreground and foreground != task["package"]:
                     edge["status"], edge["reason"] = "blocked", "跳转到应用外部"
+                    current_node_id = None
                 elif (
                     edge["action"].get("kind") != "input"
                     and _fingerprint(
                         _redact_elements(screen.elements, credentials), task["package"]
                     )
-                    == parent["fingerprint"]
+                    == before_fingerprint
                 ):
                     edge["status"] = "unchanged"
+                    current_node_id = parent["id"]
                 else:
                     node = self._add_node(
                         task,
@@ -956,14 +1170,42 @@ class AppExplorationService:
                         credentials,
                     )
                     edge["to_node"], edge["status"] = node["id"], "explored"
+                    reachable_nodes.add(node["id"])
+                    current_node_id = node["id"]
+                if edge["status"] != "blocked":
+                    edge.pop("analysis", None)
+                path_mismatch_count = 0
             except Exception as exc:
+                current_node_id = None
                 edge["status"], edge["reason"] = (
                     "blocked",
                     _hide_secrets(str(exc), credentials)[:200],
                 )
+                if str(exc) in {
+                    "页面路径已变化",
+                    "路径中的页面已变化",
+                    "返回分支后页面路径已变化",
+                    "当前会话无法返回该分支，请检查弹窗或页面状态",
+                }:
+                    path_mismatch_count += 1
+                else:
+                    path_mismatch_count = 0
+            if edge["status"] == "blocked":
+                reason = edge.get("reason") or "未知"
+                edge.pop("analysis", None)
+                if reason in analysis_cache:
+                    edge["analysis"] = analysis_cache[reason]
+                elif analysis_budget > 0:
+                    edge["analysis"] = self._analyze_blocker(task, edge, ui, credentials)
+                    analysis_cache[reason] = edge["analysis"]
+                    analysis_budget -= 1
             task["run"]["completed"] += 1
             with self._mutex:
                 self._write(task)
+            # 连续失败通常表示登录态或页面布局整体变了，留待处理分支供用户核对。
+            if path_mismatch_count >= 3:
+                task["run"]["error"] = "连续 3 条分支无法返回，已停止本轮探索"
+                break
         if not cancel.is_set():
             self._suggest_modules(task)
 
@@ -986,19 +1228,18 @@ class AppExplorationService:
                 for edge in roots
                 if not edge.get("module_edited")
             ]
-            response = asyncio.run(
-                asyncio.wait_for(
-                    model.ainvoke(
-                        [
-                            SystemMessage(
-                                content='将移动 App 首页入口按用户功能分为简短中文模块。只返回 JSON：{"items":[{"id":"原 id","module":"模块名"}]}。'
-                            ),
-                            HumanMessage(content=json.dumps(entries, ensure_ascii=False)),
-                        ]
+            response = _invoke_optional_model(
+                model,
+                [
+                    SystemMessage(
+                        content='将移动 App 首页入口按用户功能分为简短中文模块。只返回 JSON：{"items":[{"id":"原 id","module":"模块名"}]}。'
                     ),
-                    timeout=25,
-                )
+                    HumanMessage(content=json.dumps(entries, ensure_ascii=False)),
+                ],
+                timeout=25,
             )
+            if response is None:
+                raise ValueError("模型分组暂不可用")
             content = response.content
             raw = (
                 content
@@ -1070,16 +1311,18 @@ class AppExplorationService:
         ]
         if not nodes:
             raise ValueError("该模块还没有可回放的路径")
+        # 整次回放共用一个 App 会话，路径之间通过返回键寻找公共祖先。
+        blocker = self._prepare_app(driver, ui, task["package"], credentials, role)
+        if blocker:
+            raise ValueError(blocker)
         failures = []
+        current_node_id: str | None = None
         for node in nodes:
             if cancel.is_set():
                 return
             try:
-                blocker = self._reset(driver, ui, task["package"], credentials, role)
-                if blocker:
-                    raise ValueError(blocker)
-                self._follow_path(
-                    task, role, driver, ui, node["path"], credentials, cancel, strict=False
+                self._reach_node(
+                    task, role, node, driver, ui, credentials, cancel, current_node_id, strict=False
                 )
                 if cancel.is_set():
                     return
@@ -1088,7 +1331,9 @@ class AppExplorationService:
                     "structure_fingerprint", node["fingerprint"]
                 ):
                     raise ValueError("最终页面与探索记录不一致")
+                current_node_id = node["id"]
             except Exception as exc:
+                current_node_id = None
                 failures.append(f"{node['title']}: {_hide_secrets(str(exc), credentials)}")
             task["run"]["completed"] += 1
             with self._mutex:
@@ -1125,6 +1370,8 @@ class AppExplorationService:
                 lines.append(
                     f"- [{edge['role']}] {route or '打开 App'} → {edge['action']['label']}：{edge.get('reason') or '原因待补充'}（模块：{edge['module']}）"
                 )
+                if edge.get("analysis"):
+                    lines.append(f"  - 模型建议：{edge['analysis']}")
             lines.append("")
         for role in task["roles"]:
             lines += [f"## 角色：{role['name']}", ""]
@@ -1144,6 +1391,7 @@ class AppExplorationService:
                             f"- {edge['action']['label']}｜模块：{edge['module']}｜{edge['status']}"
                             + (f"｜参数：{parameter}" if parameter else "")
                             + (f"｜原因：{edge['reason']}" if edge.get("reason") else "")
+                            + (f"｜模型建议：{edge['analysis']}" if edge.get("analysis") else "")
                         )
                 lines.append("")
         return "\n".join(lines)

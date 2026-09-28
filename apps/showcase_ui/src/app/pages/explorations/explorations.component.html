@@ -84,6 +84,7 @@
                     <span class="edge-label">↳ {{ edge.action.label }}</span>
                     <span class="badge">{{ statusLabel(edge.status) }}</span>
                     @if (edge.reason) { <span class="reason">{{ edge.reason }}</span> }
+                    @if (edge.analysis) { <span class="reason">模型建议：{{ edge.analysis }}</span> }
                     <label>{{ t('module') }}<input [(ngModel)]="moduleEdits[edge.id]"></label>
                     <button [disabled]="current.run?.status === 'running'" (click)="saveModule(edge)">{{ t('saveModule') }}</button>
                     @if (edge.action.kind === 'input') {

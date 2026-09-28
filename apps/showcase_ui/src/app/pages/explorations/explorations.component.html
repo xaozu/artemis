@@ -39,7 +39,7 @@
             <label>{{ t('role') }}<select [(ngModel)]="role" (ngModelChange)="select(current.id)">
               @for (item of current.roles; track item.name) { <option [value]="item.name">{{ item.name }}{{ item.has_credentials ? ' ✓' : '' }}</option> }
             </select></label>
-            <button class="primary" [disabled]="busy() || current.run?.status === 'running'" (click)="run('explore')">{{ t('explore') }}</button>
+            <button class="primary" [disabled]="busy() || current.run?.status === 'running'" (click)="run('explore')">{{ current.nodes.length === 0 ? t('start') : t('explore') }}</button>
             <button [disabled]="busy() || current.run?.status === 'running'" (click)="run('replay')">{{ t('all') }}</button>
             @if (current.run?.status === 'running') { <button class="danger" (click)="stop()">{{ t('stop') }}</button> }
           </div>

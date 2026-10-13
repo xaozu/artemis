@@ -56,7 +56,7 @@ export interface StartupProgressEvent {
 
 interface SessionVideoResponse {
   session_id: string;
-  status?: 'processing' | 'ready' | 'failed' | 'unavailable';
+  status?: 'processing' | 'ready' | 'failed' | 'unavailable' | 'expired';
   has_video: boolean;
   video_url: string | null;
   video_segments?: VideoSegment[];

@@ -39,7 +39,7 @@ export interface Session {
   end_time?: number;
   status?: string;
   video_url?: string;
-  recording_status?: 'recording' | 'finalizing' | 'processing' | 'ready' | 'failed' | 'unavailable';
+  recording_status?: 'recording' | 'finalizing' | 'processing' | 'ready' | 'failed' | 'unavailable' | 'expired';
   model_info?: ModelInfo;
   device_serial?: string | null;
   device_id?: string | null;
@@ -82,4 +82,3 @@ export interface SessionUsage {
 export type AgentStatus = 'idle' | 'running' | 'completed' | 'offline' | string;
 
 export type TaskStatus = 'running' | 'paused' | 'completed' | 'pending' | 'failed' | 'cancelled';
-

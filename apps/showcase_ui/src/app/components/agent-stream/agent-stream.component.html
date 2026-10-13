@@ -515,7 +515,7 @@ limitations under the License.
             videocam_off
           </span>
         }
-        @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && !agentService.currentSessionVideoUrl() && !agentService.hasCurrentSessionStepFrames() && agentService.currentSessionRecordingStatus() !== 'failed') {
+        @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && !agentService.currentSessionVideoUrl() && !agentService.hasCurrentSessionStepFrames() && agentService.currentSessionRecordingStatus() !== 'failed' && agentService.currentSessionRecordingStatus() !== 'expired') {
           <span class="material-symbols-outlined video-icon">
             videocam
           </span>
@@ -529,14 +529,17 @@ limitations under the License.
         @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && agentService.currentSessionVideoUrl()) {
           <span class="btn-text">Play Recording</span>
         }
-        @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && !agentService.currentSessionVideoUrl() && agentService.hasCurrentSessionStepFrames()) {
+        @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && !agentService.currentSessionVideoUrl() && agentService.hasCurrentSessionStepFrames() && agentService.currentSessionRecordingStatus() !== 'expired') {
           <span class="btn-text">Step Replay</span>
         }
         @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && !agentService.currentSessionVideoUrl() && !agentService.hasCurrentSessionStepFrames() && agentService.currentSessionRecordingStatus() === 'failed') {
           <span class="btn-text">Recording Failed</span>
         }
-        @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && !agentService.currentSessionVideoUrl() && !agentService.hasCurrentSessionStepFrames() && agentService.currentSessionRecordingStatus() !== 'failed') {
+        @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() !== 'processing' && !agentService.currentSessionVideoUrl() && !agentService.hasCurrentSessionStepFrames() && agentService.currentSessionRecordingStatus() !== 'failed' && agentService.currentSessionRecordingStatus() !== 'expired') {
           <span class="btn-text">Screen Recording</span>
+        }
+        @if (!agentService.isCurrentSessionRunning() && agentService.currentSessionRecordingStatus() === 'expired') {
+          <span class="btn-text">{{ language.text('stream.recordingExpired') }}</span>
         }
         @if (agentService.isCurrentSessionRunning()) {
           <span class="video-pulse-dot red"></span>

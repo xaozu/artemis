@@ -8,10 +8,13 @@ from pathlib import Path
 import re
 import sqlite3
 import time
+from uuid import uuid4
 
 from artemis.runtime.device_lock import DeviceExecutionLock
 from artemis.runtime.process_probe import pid_is_alive
+from artemis.utils.logger import get_logger
 
+logger = get_logger(__name__)
 
 # 旧目录的状态后缀必须完整匹配，避免 task_1 把 task_10 一并删除。
 _SUFFIX = re.compile(
@@ -307,4 +310,147 @@ def clear_history_files(conn: sqlite3.Connection, root: Path) -> CleanupReport:
     remove_paths(paths, root, report)
     if report.errors:
         raise CleanupFailedError(report)
+    return report
+
+
+def recycle_recordings(
+    conn: sqlite3.Connection, root: Path, *, retention_days: float, max_bytes: int, now: float
+) -> CleanupReport:
+    """按结束时间及容量回收录屏；保留会话、截图、日志、笔记和分析证据。"""
+    report = CleanupReport()
+    sessions = {str(r["session_id"]): r for r in _read_rows(conn, "sessions")}
+    active, devices = _active_sessions(list(sessions.values()))
+    recordings = _read_rows(conn, "video_recordings")
+    # 兼容旧版本只有 sessions.video_filepath、没有 video_recordings 行的录屏。
+    registered = {(str(r.get("session_id")), r.get("local_video_path")) for r in recordings}
+    for sid, session in sessions.items():
+        value = session.get("video_filepath")
+        if value and (sid, value) not in registered:
+            recordings.append(
+                {
+                    "video_id": None,
+                    "session_id": sid,
+                    "local_video_path": value,
+                    "status": "ready",
+                    "start_time": session.get("start_time"),
+                    "end_time": session.get("end_time"),
+                }
+            )
+    folders: dict[Path, list[dict]] = {}
+    blocked: set[Path] = set()
+    entries = list(root.iterdir())
+    rows_by_folder: dict[Path, list[dict]] = {}
+    for row in recordings:
+        value = row.get("local_video_path")
+        if not value:
+            continue
+        matches = _reference_folders(value, root, entries)
+        if len(matches) > 1:
+            blocked.update(matches)
+            report.errors.append(f"旧录屏路径对应多个同名目录，暂不回收：{value}")
+        for folder in matches:
+            rows_by_folder.setdefault(folder.absolute(), []).append(row)
+    for folder in entries:
+        if folder.name in _RESOURCE_FOLDERS or not folder.is_dir() or not _safe_path(folder, root):
+            continue
+        rows = rows_by_folder.get(folder.absolute(), [])
+        inferred_sid = trace_name(folder.name).removeprefix("task_")
+        if not rows and inferred_sid in sessions:
+            session = sessions[inferred_sid]
+            rows = [
+                {
+                    "video_id": None,
+                    "session_id": inferred_sid,
+                    "status": "ready",
+                    "start_time": session.get("start_time"),
+                    "end_time": session.get("end_time"),
+                }
+            ]
+        if not rows and not _OWNED_NAME.fullmatch(trace_name(folder.name)):
+            continue
+        folders[folder] = rows
+        try:
+            if (
+                (not rows and devices)
+                or any(
+                    str(r.get("session_id")) in active
+                    or r.get("device_id") in devices
+                    or r.get("status") in _PENDING_RECORDING
+                    for r in rows
+                )
+                or trace_name(folder.name) in active
+                or _folder_is_live(folder, now)
+            ):
+                blocked.add(folder)
+        except OSError as exc:
+            blocked.add(folder)
+            report.errors.append(f"检查录屏目录 {folder} 失败：{exc}")
+    candidates = []
+    total = 0
+    for folder, rows in folders.items():
+        try:
+            files = [p for p in folder.iterdir() if _RECORDING_FILE.fullmatch(p.name)]
+            if any(not _safe_path(p, root) or not p.is_file() for p in files):
+                blocked.add(folder)
+                continue
+            size = sum(p.stat().st_size for p in files)
+            last_written = max((p.stat().st_mtime for p in files), default=now)
+        except OSError as exc:
+            report.errors.append(f"读取录屏目录 {folder} 失败：{exc}")
+            continue
+        if not files:
+            continue
+        total += size
+        if folder in blocked:
+            continue
+        end_times = [float(r.get("end_time") or 0) for r in rows] + [
+            float(sessions.get(str(r.get("session_id")), {}).get("end_time") or 0) for r in rows
+        ]
+        # 保留期按任务结束时间计算；无引用文件才使用最后修改时间。
+        ended = max([value for value in end_times if value > 0] or [last_written])
+        # 新整理的文件至少静置一小时，给任务登记与异常恢复留出时间。
+        if now - last_written >= 3600:
+            candidates.append((ended, folder, files, size, rows))
+    for ended, folder, files, _size, rows in sorted(candidates, key=lambda item: item[0]):
+        if now - ended < retention_days * 86400 and total <= max_bytes:
+            continue
+        # 设备占用跨进程变化，删除前再核对；SQLite 写事务阻止并发更新会话状态。
+        latest_active, latest_devices = _active_sessions(list(sessions.values()))
+        if (
+            (not rows and latest_devices)
+            or any(
+                str(r.get("session_id")) in latest_active or r.get("device_id") in latest_devices
+                for r in rows
+            )
+            or _folder_is_live(folder, now)
+        ):
+            continue
+        errors_before = len(report.errors)
+        freed_before = report.freed_bytes
+        remove_paths(files, root, report)
+        total -= report.freed_bytes - freed_before
+        if len(report.errors) != errors_before:
+            continue
+        for row in rows:
+            if row["video_id"]:
+                conn.execute(
+                    "UPDATE video_recordings SET status = 'expired', local_video_path = NULL, error = NULL WHERE video_id = ?",
+                    (row["video_id"],),
+                )
+            else:
+                conn.execute(
+                    "INSERT INTO video_recordings (video_id, session_id, start_time, end_time, status) VALUES (?, ?, ?, ?, 'expired')",
+                    (str(uuid4()), row["session_id"], row.get("start_time"), row.get("end_time")),
+                )
+            session = sessions.get(str(row["session_id"]), {})
+            value = session.get("video_filepath")
+            if value and folder in _reference_folders(value, root, entries):
+                conn.execute(
+                    "UPDATE sessions SET video_filepath = NULL WHERE session_id = ?",
+                    (row["session_id"],),
+                )
+                session["video_filepath"] = None
+        report.recycled_recordings += 1
+    report.remaining_bytes = total
+    logger.info(f"录屏自动回收结果：{report.as_dict()}")
     return report

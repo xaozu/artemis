@@ -101,7 +101,8 @@ const UI_TEXT = {
     'tasks.selectToView': 'Please select a session from the Task List on the right to view its real-time log payloads.',
     'tasks.completed': 'Task Completed',
     'tasks.failed': 'Task Execution Failed',
-    'tasks.report': 'Task Report'
+    'tasks.report': 'Task Report',
+    'stream.recordingExpired': 'Recording automatically removed'
   },
   zh: {
     'nav.main': '主导航',
@@ -183,7 +184,8 @@ const UI_TEXT = {
     'tasks.selectToView': '选择任务以查看执行详情。',
     'tasks.completed': '任务已完成',
     'tasks.failed': '任务执行失败',
-    'tasks.report': '任务报告'
+    'tasks.report': '任务报告',
+    'stream.recordingExpired': '录屏已自动回收'
   }
 } as const;
 

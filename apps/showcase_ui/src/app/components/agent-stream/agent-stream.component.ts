@@ -1564,6 +1564,9 @@ export class AgentStreamComponent implements AfterViewInit {
     if (this.agentService.currentSessionVideoUrl()) {
       return 'Play Screen Recording Video';
     }
+    if (this.agentService.currentSessionRecordingStatus() === 'expired') {
+      return this.language.text('stream.recordingExpired');
+    }
     if (this.agentService.hasCurrentSessionStepFrames()) {
       return this.agentService.currentSessionRecordingStatus() === 'failed'
         ? 'Video recording failed — Click to replay step-by-step screenshots'

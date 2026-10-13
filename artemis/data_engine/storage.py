@@ -1111,6 +1111,26 @@ class StorageManager:
         logger.info(f"历史清理完成：{report.as_dict()}")
         return report
 
+    def recycle_recordings(
+        self, *, retention_days: float = 7, max_bytes: int = 10 * 1024**3, now: float | None = None
+    ):
+        """回收过期或超容量的录屏，保留会话结果及其他诊断资料。"""
+        import time
+        from artemis.data_engine.recording_cleanup import recycle_recordings, recording_files_lock
+
+        with recording_files_lock(self.base_trace_dir), self._get_connection() as conn:
+            # SQLite 写事务在不同 StorageManager 实例和不同进程间互斥。
+            conn.execute("BEGIN IMMEDIATE")
+            report = recycle_recordings(
+                conn,
+                self.base_trace_dir,
+                retention_days=retention_days,
+                max_bytes=max_bytes,
+                now=time.time() if now is None else now,
+            )
+            conn.commit()
+        return report
+
     def delete_session(self, session_id: UUID):
         """精确删除会话及关联文件，失败时保留数据库记录供重试。"""
         from artemis.data_engine.recording_cleanup import clear_session_files, recording_files_lock

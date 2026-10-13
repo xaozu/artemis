@@ -106,7 +106,7 @@ def _list_sessions_sync():
         recording_status = str((recording or {}).get("status") or "unavailable")
         resolved_v_url = (
             media_service.resolve_video_url(row_dict, video_rec_map, video_idx)
-            if recording_status != "recording"
+            if recording_status not in ("recording", "expired")
             else None
         )
         if resolved_v_url:

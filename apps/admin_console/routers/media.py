@@ -122,6 +122,16 @@ def _get_session_video_sync(session_id: str):
     recording = session_repo.get_video_recording_for_session(session_id)
     recording_status = str((recording or {}).get("status") or "")
 
+    if recording_status == "expired":
+        return {
+            "session_id": session_id,
+            "status": "expired",
+            "has_video": False,
+            "video_url": None,
+            "video_segments": [],
+            "message": "录屏已自动回收，任务结果和截图仍保留",
+        }
+
     if recording_status in ("recording", "finalizing"):
         return {
             "session_id": session_id,

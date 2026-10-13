@@ -150,6 +150,12 @@ class Settings(BaseSettings):
     DATA_ENGINE_DB_PATH: Path = Field(default_factory=get_data_engine_db_path)
     TEMP_PATH: Path = Field(default_factory=get_temp_dir)
 
+    # 只自动回收录屏，不删除任务结果、日志、截图及回放测试资料。
+    ARTEMIS_RECORDING_CLEANUP_ENABLED: bool = Field(default=True)
+    ARTEMIS_RECORDING_RETENTION_DAYS: float = Field(default=7, gt=0)
+    ARTEMIS_RECORDING_MAX_GIB: float = Field(default=10, gt=0)
+    ARTEMIS_RECORDING_CLEANUP_INTERVAL_SECONDS: float = Field(default=3600, ge=60)
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @model_validator(mode="after")

@@ -77,21 +77,43 @@ try:
     from admin_console.database.repositories.session_repository import session_repo
     from admin_console.database.repositories.step_repository import step_repo
     from admin_console.database.repositories.trace_repository import trace_repo
-    from admin_console.routers import app_explorations, manual_workflows, media, replay, sessions, steps, stream, system, tasks
+    from admin_console.routers import (
+        app_explorations,
+        manual_workflows,
+        media,
+        replay,
+        sessions,
+        steps,
+        stream,
+        system,
+        tasks,
+    )
     from admin_console.routers.replay import replay_manager
     from admin_console.services.ipc_service import ipc_service
     from admin_console.services.media_service import media_service
     from admin_console.services.model_service import model_service
     from admin_console.services.task_queue_service import task_queue_service
+    from admin_console.services.recording_cleanup_service import recording_cleanup_service
 except ImportError:
     from apps.admin_console.core.security import SameOriginBoundaryMiddleware
     from apps.admin_console.core.state import state
     from apps.admin_console.database.repositories.session_repository import session_repo
-    from apps.admin_console.routers import app_explorations, manual_workflows, media, replay, sessions, steps, stream, system, tasks
+    from apps.admin_console.routers import (
+        app_explorations,
+        manual_workflows,
+        media,
+        replay,
+        sessions,
+        steps,
+        stream,
+        system,
+        tasks,
+    )
     from apps.admin_console.routers.replay import replay_manager
     from apps.admin_console.services.ipc_service import ipc_service
     from apps.admin_console.services.model_service import model_service
     from apps.admin_console.services.task_queue_service import task_queue_service
+    from apps.admin_console.services.recording_cleanup_service import recording_cleanup_service
 
 # Initialize language server synchronization address
 init_ls_address()
@@ -155,7 +177,10 @@ async def on_startup():
         print(f"[ServerStartup] Marked {cleaned} orphaned running session(s) as failed.")
     # Workers killed together with a previous daemon never remuxed their
     # recordings; publish whatever raw files they left behind.
-    asyncio.create_task(asyncio.to_thread(task_queue_service.recover_orphaned_recordings_on_launch))
+    recovery_task = asyncio.create_task(
+        asyncio.to_thread(task_queue_service.recover_orphaned_recordings_on_launch)
+    )
+    recording_cleanup_service.start(recovery_task)
 
     await ipc_service.start_server()
     state.worker_task = asyncio.create_task(task_queue_service.queue_worker())
@@ -164,6 +189,7 @@ async def on_startup():
 async def on_shutdown():
     """Stop task and IPC children before the UI server exits."""
     state.is_shutting_down = True
+    await recording_cleanup_service.stop()
     state.shutdown_event.set()
     task_queue_service._broadcast_event("server_shutdown", {"status": "stopping"})
     owned_session_ids = {

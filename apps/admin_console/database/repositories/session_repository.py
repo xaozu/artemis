@@ -177,7 +177,7 @@ class SessionRepository:
                     else "v.end_time IS NULL"
                 )
                 cursor.execute(
-                    "SELECT v.session_id, v.local_video_path, v.start_time, "
+                    "SELECT v.session_id, v.device_id, v.local_video_path, v.start_time, "
                     "s.status AS session_status, s.start_time AS session_start_time "
                     "FROM video_recordings v LEFT JOIN sessions s ON s.session_id = v.session_id "
                     f"WHERE v.session_id IS NOT NULL AND v.local_video_path IS NOT NULL "

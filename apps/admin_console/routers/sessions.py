@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException
 
 from artemis.config import DB_PATH, TRACES_PATH
 from artemis.runtime import trace_store
+from artemis.data_engine.recording_cleanup import CleanupBusyError, CleanupFailedError
 
 try:
     from admin_console.core.state import state
@@ -211,15 +212,23 @@ async def get_session_startup_progress(session_id: str):
 
 @router.post("/api/cleanup")
 async def cleanup_history_endpoint():
+    """清空前检查任务占用，实际文件操作移到线程，失败时保留可重试记录。"""
+    if state.is_running or state.active_runs or state.queue_items:
+        raise HTTPException(status_code=409, detail="有运行中或排队任务，请先结束任务再清空历史")
     try:
         from artemis.data_engine.storage import StorageManager
 
         storage = StorageManager(DB_PATH, TRACES_PATH)
-        storage.clear_all_data()
+        report = await asyncio.to_thread(storage.clear_all_data)
         return {
             "status": "success",
-            "message": "History cleaned up successfully",
+            "message": "历史记录和关联录屏已清空",
+            **report.as_dict(),
         }
+    except CleanupBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except CleanupFailedError as e:
+        raise HTTPException(status_code=500, detail={"message": str(e), **e.report.as_dict()})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -230,10 +239,15 @@ async def delete_session_endpoint(session_id: str):
         from artemis.data_engine.storage import StorageManager
 
         storage = StorageManager(DB_PATH, TRACES_PATH)
-        storage.delete_session(UUID(session_id))
+        report = await asyncio.to_thread(storage.delete_session, UUID(session_id))
         return {
             "status": "success",
             "message": f"Session {session_id} deleted successfully",
+            **report.as_dict(),
         }
+    except CleanupBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except CleanupFailedError as e:
+        raise HTTPException(status_code=500, detail={"message": str(e), **e.report.as_dict()})
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

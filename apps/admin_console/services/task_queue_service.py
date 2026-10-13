@@ -1652,6 +1652,16 @@ class TaskQueueService:
             return 0
         for row in pending:
             sess_id = row.get("session_id")
+            # 数据库可能已经写入终态，但其他进程仍持有设备；不要恢复其录屏。
+            owners = DeviceExecutionLock.get_active_owners()
+            if (
+                any(str(o.session_id) == str(sess_id) for o in owners.values())
+                or row.get("device_id") in owners
+                or any(
+                    getattr(o, "device_id", None) == row.get("device_id") for o in owners.values()
+                )
+            ):
+                continue
             try:
                 final_path = media_service.recover_orphaned_recording(
                     row.get("local_video_path"),
@@ -1661,6 +1671,14 @@ class TaskQueueService:
                 print(f"[ServerStartup] Recording recovery failed for {sess_id}: {exc}")
                 continue
             if not final_path:
+                source = Path(row["local_video_path"]) if row.get("local_video_path") else None
+                raw = source.parent / "recording.mkv" if source else None
+                if raw and raw.exists() and media_service.is_live_recording(raw):
+                    continue
+                # 无可恢复文件时结束等待状态，否则清空历史会一直被阻止。
+                session_repo.mark_recording_failed_if_pending(
+                    str(sess_id), "录屏文件缺失或恢复失败"
+                )
                 continue
             if session_repo.mark_recording_ready(str(sess_id), str(final_path)):
                 recovered += 1

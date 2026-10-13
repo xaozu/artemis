@@ -97,8 +97,18 @@ class MediaService:
             pass
         return p
 
+    @classmethod
+    def _convert_to_mp4(cls, p: Path, mp4_cand: Path) -> Path:
+        """与录屏回收互斥，避免转换结束后重新生成已经清理的视频。"""
+        from artemis.data_engine.recording_cleanup import recording_files_lock
+
+        with recording_files_lock(Path(TRACES_PATH)):
+            if not p.exists():
+                return p
+            return cls._convert_to_mp4_unlocked(p, mp4_cand)
+
     @staticmethod
-    def _convert_to_mp4(p: Path, mp4_cand: Path) -> Path:
+    def _convert_to_mp4_unlocked(p: Path, mp4_cand: Path) -> Path:
         from artemis.utils.video import get_ffmpeg_path
 
         ffmpeg = get_ffmpeg_path()

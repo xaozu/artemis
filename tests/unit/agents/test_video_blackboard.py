@@ -261,13 +261,17 @@ def test_session_deletion_removes_video_blackboard_rows(tmp_path):
     engine = DataEngine(ctx)
     session_id = engine.start_session(goal="blackboard cleanup")
     video_id = uuid4()
-    recording = tmp_path / "recording.mp4"
+    recording = tmp_path / "traces" / str(session_id) / "recording.mp4"
     recording.write_bytes(b"video")
     engine.record_video_start(video_id, "device", recording)
 
     board = VideoBlackboard(f"video:{video_id}", db_path=engine.storage.db_path)
     board.add_observation({"start": 0.0, "end": 1.0, "target": "cleanup", "summary": "evidence"})
     assert board.list_observations()
+
+    # 删除会话前先结束录制和任务，验证不会清理仍在写入的数据。
+    engine.record_video_stop(video_id, "device", recording, start_time=engine.session_start_time)
+    engine.end_session("completed")
 
     engine.storage.delete_session(session_id)
 

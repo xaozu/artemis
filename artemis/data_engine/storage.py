@@ -17,11 +17,9 @@ from contextlib import contextmanager
 import difflib
 import json
 from pathlib import Path
-import shutil
 import sqlite3
 import threading
 from typing import Any
-import uuid
 from uuid import UUID
 
 from artemis.data_engine.models import (
@@ -1084,162 +1082,70 @@ class StorageManager:
         return traces
 
     def clear_all_data(self):
-        """Clear all data from SQLite tables and delete session directories."""
-        with self._get_connection() as conn:
+        """清空历史及关联文件；跨进程写事务保证清理期间不会登记新任务。"""
+        from artemis.data_engine.recording_cleanup import clear_history_files, recording_files_lock
+
+        with recording_files_lock(self.base_trace_dir), self._get_connection() as conn:
             conn.execute("PRAGMA foreign_keys = OFF")
-            tables = [
+            conn.execute("BEGIN IMMEDIATE")
+            report = clear_history_files(conn, self.base_trace_dir)
+            tables = (
                 "video_analysis_observations",
                 "video_analysis_segments",
+                "history_chunks",
                 "failed_outputs",
                 "traces",
                 "background_tasks",
+                "video_recordings",
                 "steps",
                 "images",
                 "sessions",
-            ]
+            )
+            existing = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
             for table in tables:
-                try:
+                if table in existing:
                     conn.execute(f"DELETE FROM {table}")
-                except sqlite3.OperationalError as e:
-                    logger.warning(f"Failed to clear table {table}: {e}")
             conn.commit()
-            conn.execute("VACUUM")
-            conn.commit()
-        logger.info("Database tables cleared and vacuumed.")
-
-        # Delete session directories
-        if self.base_trace_dir.exists():
-            for path in self.base_trace_dir.iterdir():
-                if path.is_dir():
-                    if path.name == "images":
-                        # Clear images
-                        for img_path in path.iterdir():
-                            if img_path.is_file():
-                                try:
-                                    img_path.unlink()
-                                except Exception as e:
-                                    logger.error(f"Failed to delete image {img_path}: {e}")
-                    elif path.name.startswith("web_") or self._is_uuid(path.name):
-                        try:
-                            shutil.rmtree(path)
-                        except Exception as e:
-                            logger.error(f"Failed to delete directory {path}: {e}")
-                elif path.is_file() and path.name == "mcp_server.log":
-                    try:
-                        path.unlink()
-                    except Exception as e:
-                        logger.error(f"Failed to delete log file {path}: {e}")
-
-    def _is_uuid(self, val: str) -> bool:
-        # Support both pure UUID and UUID with suffix (e.g., UUID_PASS_...)
-        parts = val.split("_")
-        target = parts[0] if parts else val
-        try:
-            uuid.UUID(target)
-            return True
-        except ValueError:
-            return False
+        logger.info(f"历史清理完成：{report.as_dict()}")
+        return report
 
     def delete_session(self, session_id: UUID):
-        """Delete all data associated with a session, including files on disk."""
+        """精确删除会话及关联文件，失败时保留数据库记录供重试。"""
+        from artemis.data_engine.recording_cleanup import clear_session_files, recording_files_lock
+
         session_id_str = str(session_id)
-
-        # 1. Get video paths before deleting from DB
-        video_paths = []
-        video_ids: list[str] = []
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.execute(
-                    "SELECT video_id, local_video_path FROM video_recordings WHERE session_id = ?",
-                    (session_id_str,),
-                )
-                for row in cursor.fetchall():
-                    if row["video_id"]:
-                        video_ids.append(str(row["video_id"]))
-                    if row["local_video_path"]:
-                        video_paths.append(Path(row["local_video_path"]))
-        except sqlite3.OperationalError as e:
-            logger.warning(f"Could not query video_recordings: {e}")
-
-        # 2. Delete from DB tables
-        with self._get_connection() as conn:
+        with recording_files_lock(self.base_trace_dir), self._get_connection() as conn:
             conn.execute("PRAGMA foreign_keys = OFF")
-            board_keys = [f"session:{session_id_str}"] + [
-                f"video:{video_id}" for video_id in video_ids
+            conn.execute("BEGIN IMMEDIATE")
+            video_ids = [
+                r[0]
+                for r in conn.execute(
+                    "SELECT video_id FROM video_recordings WHERE session_id = ?", (session_id_str,)
+                )
             ]
-            for table in (
-                "video_analysis_observations",
-                "video_analysis_segments",
-            ):
-                try:
+            report = clear_session_files(conn, self.base_trace_dir, session_id_str)
+            existing = {
+                r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
+            board_keys = [f"session:{session_id_str}"] + [f"video:{v}" for v in video_ids]
+            for table in ("video_analysis_observations", "video_analysis_segments"):
+                if table in existing:
                     conn.executemany(
-                        f"DELETE FROM {table} WHERE board_key = ?",
-                        [(key,) for key in board_keys],
+                        f"DELETE FROM {table} WHERE board_key = ?", [(k,) for k in board_keys]
                     )
-                except sqlite3.OperationalError as e:
-                    logger.warning(f"Failed to delete video memory from {table}: {e}")
-            tables = [
+            for table in (
+                "history_chunks",
                 "failed_outputs",
                 "traces",
                 "background_tasks",
                 "video_recordings",
                 "steps",
                 "sessions",
-            ]
-            for table in tables:
-                try:
-                    conn.execute(
-                        f"DELETE FROM {table} WHERE session_id = ?",
-                        (session_id_str,),
-                    )
-                except sqlite3.OperationalError as e:
-                    logger.warning(f"Failed to delete from table {table}: {e}")
+            ):
+                if table in existing:
+                    conn.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id_str,))
             conn.commit()
-            conn.execute("VACUUM")
-            conn.commit()
-
-        logger.info(f"Database records for session {session_id} cleared.")
-
-        # 3. Delete session directory (notes, etc.)
-        session_dir = self.base_trace_dir / session_id_str
-        if session_dir.exists() and session_dir.is_dir():
-            try:
-                shutil.rmtree(session_dir)
-                logger.info(f"Deleted session directory: {session_dir}")
-            except Exception as e:
-                logger.error(f"Failed to delete session directory {session_dir}: {e}")
-
-        # 4. Delete video files and their containing folders (which might have been renamed)
-        for video_path in video_paths:
-            # video_path is likely: /path/to/traces/task_name/recording.mp4
-            # If it was renamed, it might be: /path/to/traces/task_name_PASS_timestamp/recording.mp4
-
-            task_name = video_path.parent.name
-
-            if task_name and task_name != "traces" and task_name != "..":
-                # Search for directories starting with task_name in base_trace_dir
-                try:
-                    for path in self.base_trace_dir.iterdir():
-                        if path.is_dir() and path.name.startswith(task_name):
-                            try:
-                                shutil.rmtree(path)
-                                logger.info(f"Deleted trace/video directory: {path}")
-                            except Exception as e:
-                                logger.error(f"Failed to delete directory {path}: {e}")
-                        elif path.is_file() and path.name.startswith(task_name):
-                            try:
-                                path.unlink()
-                                logger.info(f"Deleted trace/video file: {path}")
-                            except Exception as e:
-                                logger.error(f"Failed to delete file {path}: {e}")
-                except Exception as e:
-                    logger.error(f"Error iterating base_trace_dir for cleanup: {e}")
-
-            if video_path.exists():
-                try:
-                    video_path.unlink()
-                    logger.info(f"Deleted video file directly: {video_path}")
-                    if video_path.parent.exists() and not any(video_path.parent.iterdir()):
-                        video_path.parent.rmdir()
-                except Exception as e:
-                    logger.error(f"Failed to delete video file directly {video_path}: {e}")
+        logger.info(f"会话 {session_id_str} 清理完成：{report.as_dict()}")
+        return report

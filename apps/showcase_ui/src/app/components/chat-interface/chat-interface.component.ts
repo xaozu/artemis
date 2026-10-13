@@ -147,7 +147,8 @@ export class ChatInterfaceComponent {
       error: (err: any) => {
         console.error('Failed to clear history:', err);
         this.isSubmitting.set(false);
-        this.errorMessage.set(err.error?.detail || 'Failed to clear history.');
+        const detail = err.error?.detail;
+        this.errorMessage.set(typeof detail === 'string' ? detail : detail?.message || '清空历史失败，请稍后重试。');
       }
     });
   }

@@ -668,21 +668,20 @@ export class AgentService {
    * Clear all sessions, tasks, and history
    */
   public clearAllHistory(): Observable<any> {
-    // 1. Optimistically clear all local session state immediately
-    this.invalidateStatusSignatures();
-    this.userPinnedSessionId.set(null);
-    this.rawSessions.set([]);
-    this.clearSessionsCache();
-    this.pendingQueue.set([]);
-    this.selectSession('', false);
-    if (this.isVideoWindowOpen()) {
-      this.closeVideoPlayer();
-    }
-
-    // 2. Send API request
+    // 请求成功前保留列表，避免失败时误显示历史已清空。
     return new Observable((obs) => {
       this.http.post<any>('/api/cleanup', {}).subscribe({
         next: (res) => {
+          // 后端确认文件和数据库已清空后，再清除页面状态。
+          this.invalidateStatusSignatures();
+          this.userPinnedSessionId.set(null);
+          this.rawSessions.set([]);
+          this.clearSessionsCache();
+          this.pendingQueue.set([]);
+          this.selectSession('', false);
+          if (this.isVideoWindowOpen()) {
+            this.closeVideoPlayer();
+          }
           this.fetchSessions();
           this.fetchStatus();
           obs.next(res);

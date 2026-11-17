@@ -1,5 +1,8 @@
 """Tests for the generic LLM failure taxonomy and circuit breaker."""
 
+import httpx
+from openai import InternalServerError
+
 from artemis.llm.reliability import (
     CircuitBreaker,
     FailureCategory,
@@ -47,6 +50,21 @@ def test_non_retryable_categories_get_single_attempt():
     assert retry_policy_for(FailureCategory.AUTHENTICATION).max_attempts == 1
     assert retry_policy_for(FailureCategory.BAD_REQUEST).max_attempts == 1
     assert retry_policy_for(FailureCategory.RATE_LIMIT).max_attempts > 1
+
+
+def test_openai_business_code_preserves_http_failure_category():
+    """真实 SDK 的字符串业务码不应遮住 503，导致渠道故障被当成未知错误。"""
+    response = httpx.Response(
+        503, request=httpx.Request("POST", "https://example.test/v1/chat/completions")
+    )
+    error = InternalServerError(
+        "No available channel for model",
+        response=response,
+        body={"code": "model_not_found", "type": "new_api_error"},
+    )
+    failure = classify_failure(error)
+    assert failure.category is FailureCategory.PROVIDER_UNAVAILABLE
+    assert failure.retryable and failure.should_fallback
 
 
 def test_breaker_only_trips_on_transient_categories():

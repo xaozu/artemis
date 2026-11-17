@@ -1163,6 +1163,8 @@ async def with_fallback[T](
     try:
         result = await main_call()
     except (KeyboardInterrupt, asyncio.CancelledError):
+        # 取消后恢复调用上下文，避免后续无备用模型的请求误以为还能切换。
+        _FALLBACK_AVAILABLE.reset(fallback_token)
         raise
     except LLMCallError as e:
         _FALLBACK_AVAILABLE.reset(fallback_token)

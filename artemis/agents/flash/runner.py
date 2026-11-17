@@ -84,6 +84,7 @@ from artemis.services.llm import (
     acomplete,
     get_llm,
     invoke_llm_with_timeout_message,
+    with_fallback,
 )
 from artemis.tools.history import history_tool_declarations
 from artemis.tools.tool_wrapper import tool_result_messages
@@ -274,11 +275,15 @@ class FlashRunner:
 
     #: The model of the current run; decides how screenshot tool results travel.
     _llm = None
+    #: 主模型重试耗尽后使用的备用模型，与 operator 配置保持一致。
+    _llm_fallback = None
 
     def _init_llm(self):
-        """Initializes the Universal LLM via the Service Layer."""
+        """初始化 operator 主备模型，供 Flash 每轮请求使用。"""
         try:
-            return get_llm(self.ctx, name="operator")
+            llm = get_llm(self.ctx, name="operator")
+            self._llm_fallback = get_llm(self.ctx, name="operator", use_fallback=True)
+            return llm
         except Exception as e:
             # 模型配置出错时保留原始原因，避免静默切到未配置密钥的 Gemini。
             raise RuntimeError(f"Flash operator model initialization failed: {e}") from e
@@ -879,15 +884,20 @@ class FlashRunner:
         return pre_screenshot_bytes, xml_list, action_sequence
 
     async def _invoke_model(self, llm, current_tools: list, messages: list[BaseMessage]):
-        """Binds the active tools and invokes the model through the LLM gateway."""
-        # Bind active tools
-        bound_llm = llm.bind_tools(current_tools)
+        """主备模型使用相同工具；可恢复错误交给统一重试和切换逻辑处理。"""
 
-        # Invoke Model. Streaming, live-token UI deltas, classified
-        # retries, and pause/resume are all owned by the LLM gateway
-        # (acomplete); a typed LLMCallError propagates if it gives up.
-        return await invoke_llm_with_timeout_message(
-            acomplete(bound_llm, messages), timeout_seconds=10, hard_timeout=180
+        async def invoke(model):
+            # 工具截图的消息格式跟随本轮实际使用的模型，兼容跨服务切换。
+            self._llm = model
+            bound_llm = model.bind_tools(current_tools)
+            return await invoke_llm_with_timeout_message(
+                acomplete(bound_llm, messages), timeout_seconds=10, hard_timeout=180
+            )
+
+        # 必须在请求前声明备用调用，否则主模型重试耗尽会直接暂停整项任务。
+        return await with_fallback(
+            main_call=lambda: invoke(llm),
+            fallback_call=lambda: invoke(self._llm_fallback),
         )
 
     async def _process_tool_calls(

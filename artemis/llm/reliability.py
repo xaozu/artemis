@@ -66,12 +66,16 @@ class Failure:
 
 
 def extract_status_code(error: BaseException) -> int | None:
-    """Best-effort extraction of an HTTP-ish status code from an exception."""
-    code = getattr(error, "code", None) or getattr(error, "status_code", None)
-    try:
-        return int(code) if code is not None else None
-    except (TypeError, ValueError):
-        return None
+    """提取 HTTP 状态码，兼容同时携带字符串业务错误码的接口异常。"""
+    # OpenAI 兼容接口的 code 可能是 model_not_found，不能因此丢掉 status_code=503。
+    for attr in ("status_code", "code"):
+        code = getattr(error, attr, None)
+        try:
+            if code is not None:
+                return int(code)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 _RATE_LIMIT_MARKERS = ("rate limit", "quota", "resource_exhausted")

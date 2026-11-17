@@ -1,5 +1,6 @@
 """Tests for the LLM gateway: complete(), classified recovery, and fallback."""
 
+import asyncio
 from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage, AIMessageChunk
@@ -13,6 +14,30 @@ from artemis.services.llm import (
     acomplete_structured,
     with_fallback,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", [asyncio.CancelledError, KeyboardInterrupt])
+async def test_cancelled_fallback_scope_restores_context(error_type):
+    """用户取消主请求时不调用备用模型，也不能留下备用可用标记。"""
+    token = llm_service._FALLBACK_AVAILABLE.set(False)
+    fallback_called = False
+
+    async def main_call():
+        assert llm_service._FALLBACK_AVAILABLE.get()
+        raise error_type()
+
+    async def fallback_call():
+        nonlocal fallback_called
+        fallback_called = True
+
+    try:
+        with pytest.raises(error_type):
+            await with_fallback(main_call, fallback_call)
+        assert not fallback_called
+        assert not llm_service._FALLBACK_AVAILABLE.get()
+    finally:
+        llm_service._FALLBACK_AVAILABLE.reset(token)
 
 
 @pytest.fixture(autouse=True)

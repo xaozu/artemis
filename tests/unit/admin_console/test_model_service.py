@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import json
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -20,16 +21,33 @@ import pytest
 from apps.admin_console.services.model_service import ModelService
 
 
-def test_get_active_model_info_pro_architecture():
+@pytest.fixture
+def google_operator_llm_config(monkeypatch):
+    """注入明确的 LLM 配置（operator 为 google），并清空 ModelService 的 TTL 缓存。
+
+    ``ModelService`` 默认读取仓库 ``config/artemis.jsonc``，provider 会随本仓库的
+    默认配置变化；这里固定输入，只验证 profile 与架构名的映射以及 provider/model
+    是否原样透传。
+    """
+    llm_cfg = SimpleNamespace(
+        operator=SimpleNamespace(provider="google", model="gemini-test-flash"),
+        default=None,
+    )
+    monkeypatch.setattr("artemis.config.parse_llm_config", lambda: llm_cfg)
+    monkeypatch.setattr(ModelService, "_llm_info_cache", None)
+    return llm_cfg
+
+
+def test_get_active_model_info_pro_architecture(google_operator_llm_config):
     """Verify that pro profile returns Pro architecture while keeping real LLM model."""
     info = ModelService.get_active_model_info("pro")
     assert info["name"] == "Pro"
     assert info["architecture"] == "ARTEMIS Pro"
     assert info["provider"] == "google"
-    assert "id" in info
+    assert info["id"] == "gemini-test-flash"
 
 
-def test_get_active_model_info_flash_architecture():
+def test_get_active_model_info_flash_architecture(google_operator_llm_config):
     """Verify that flash profile returns Flash architecture."""
     info = ModelService.get_active_model_info("flash")
     assert info["name"] == "Flash"

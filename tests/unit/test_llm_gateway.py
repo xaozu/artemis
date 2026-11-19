@@ -318,7 +318,9 @@ def test_get_cached_raw_model_routes_by_provider(monkeypatch):
 
     monkeypatch.setattr(llm_service.ModelFactory, "get_model", fake_get_model)
 
-    assert llm_service.get_cached_raw_model("openai", "gemini-3.8-flash", temperature=0.0) == "model"
+    assert (
+        llm_service.get_cached_raw_model("openai", "gemini-3.8-flash", temperature=0.0) == "model"
+    )
     endpoint = captured["endpoint"]
     assert endpoint.provider is llm_service.ModelProvider.OPENAI
     assert endpoint.model_name == "gemini-3.8-flash"

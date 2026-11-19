@@ -14,6 +14,7 @@
 
 from artemis.utils.ui_filter import (
     _clip_bounds,
+    _detect_fixed_system_bars,
     _is_semantic_empty,
     filter_node,
     filter_ui_hierarchy,
@@ -347,3 +348,261 @@ def test_mutual_occlusion_warning_injection():
     )
     assert "WARNING: may overlap with [2], possible occlusion" in minimal_list
     assert "WARNING: may overlap with [1], possible occlusion" in minimal_list
+
+
+# ---------------------------------------------------------------------------
+# 上游 PR #181（issue #180）：系统弹窗（运行时权限弹窗、SystemUI 警告框）必须保持可点击，
+# 只有真正细长的状态栏/导航栏才被当作固定栏过滤。
+# 夹具使用 parse_hierarchy_xml_to_elements 产出的扁平元素形态（文档顺序、无嵌套）。
+# ---------------------------------------------------------------------------
+
+_STATUS_BAR = {
+    "package": "com.android.systemui",
+    "class": "android.widget.FrameLayout",
+    "bounds": "[0,0][1080,80]",
+    "clickable": "false",
+    "scrollable": "false",
+}
+_NAV_BAR = {
+    "package": "com.android.systemui",
+    "class": "android.widget.FrameLayout",
+    "bounds": "[0,2268][1080,2400]",
+    "clickable": "false",
+    "scrollable": "false",
+}
+
+
+def _texts_of(elements):
+    return {el.get("text") for el in elements}
+
+
+def test_permission_controller_dialog_stays_clickable():
+    """应用窗口上叠加运行时权限弹窗、且存在真实状态栏/导航栏时，允许/拒绝按钮必须保留且 bounds 不变。"""
+    hierarchy = [
+        dict(_STATUS_BAR),
+        dict(_NAV_BAR),
+        # uiautomator 报告的全屏弹窗窗口根节点
+        {
+            "package": "com.android.permissioncontroller",
+            "class": "android.widget.FrameLayout",
+            "bounds": "[0,0][1080,2400]",
+            "clickable": "false",
+            "scrollable": "false",
+        },
+        {
+            "package": "com.android.permissioncontroller",
+            "class": "android.widget.TextView",
+            "text": "Allow Camera to take pictures and record video?",
+            "bounds": "[90,1000][990,1080]",
+            "clickable": "false",
+        },
+        {
+            "package": "com.android.permissioncontroller",
+            "class": "android.widget.Button",
+            "resource-id": "com.android.permissioncontroller:id/permission_allow_button",
+            "text": "While using the app",
+            "bounds": "[90,1900][990,2000]",
+            "clickable": "true",
+        },
+        {
+            "package": "com.android.permissioncontroller",
+            "class": "android.widget.Button",
+            "resource-id": "com.android.permissioncontroller:id/permission_deny_button",
+            "text": "Deny",
+            "bounds": "[90,2100][990,2200]",
+            "clickable": "true",
+        },
+        {
+            "package": "com.example.app",
+            "class": "android.widget.Button",
+            "text": "AppButton",
+            "bounds": "[100,300][980,420]",
+            "clickable": "true",
+        },
+    ]
+
+    bars = _detect_fixed_system_bars(hierarchy, 1080, 2400)
+    # 只有真实的状态栏和导航栏是固定栏
+    assert bars == [
+        {"left": 0, "top": 0, "right": 1080, "bottom": 80},
+        {"left": 0, "top": 2268, "right": 1080, "bottom": 2400},
+    ]
+
+    filtered = filter_ui_hierarchy(hierarchy, screen_width=1080, screen_height=2400)
+    texts = _texts_of(filtered)
+    assert "While using the app" in texts
+    assert "Deny" in texts
+    allow = next(el for el in filtered if el.get("text") == "While using the app")
+    deny = next(el for el in filtered if el.get("text") == "Deny")
+    assert allow["bounds"] == "[90,1900][990,2000]"
+    assert deny["bounds"] == "[90,2100][990,2200]"
+
+
+def test_permission_controller_never_classified_as_bar():
+    """贴底、满宽的权限弹窗变体（300px 落在通用底栏高度区间内）也不能被当作固定栏。
+
+    permissioncontroller 只承载弹窗，从不拥有状态栏/导航栏。
+    """
+    hierarchy = [
+        {
+            "package": "com.android.permissioncontroller",
+            "class": "android.widget.FrameLayout",
+            "bounds": "[0,2100][1080,2400]",
+            "clickable": "false",
+            "scrollable": "false",
+        },
+        {
+            "package": "com.android.permissioncontroller",
+            "class": "android.widget.Button",
+            "text": "Allow",
+            "bounds": "[90,2200][990,2300]",
+            "clickable": "true",
+        },
+    ]
+
+    assert _detect_fixed_system_bars(hierarchy, 1080, 2400) == []
+
+    filtered = filter_ui_hierarchy(hierarchy, screen_width=1080, screen_height=2400)
+    allow = next(el for el in filtered if el.get("text") == "Allow")
+    assert allow["bounds"] == "[90,2200][990,2300]"
+
+
+def test_systemui_full_screen_dialog_window_not_a_bar():
+    """SystemUI 警告框（USB 调试授权）位于全屏 SystemUI 窗口内：该窗口不是固定栏，按钮必须可点击。"""
+    hierarchy = [
+        dict(_STATUS_BAR),
+        dict(_NAV_BAR),
+        {
+            "package": "com.android.systemui",
+            "class": "android.widget.FrameLayout",
+            "bounds": "[0,0][1080,2400]",
+            "clickable": "false",
+            "scrollable": "false",
+        },
+        {
+            "package": "com.android.systemui",
+            "class": "android.widget.TextView",
+            "text": "Allow USB debugging?",
+            "bounds": "[90,1000][990,1060]",
+            "clickable": "false",
+        },
+        {
+            "package": "com.android.systemui",
+            "class": "android.widget.Button",
+            "text": "Cancel",
+            "bounds": "[90,1340][520,1420]",
+            "clickable": "true",
+        },
+        {
+            "package": "com.android.systemui",
+            "class": "android.widget.Button",
+            "text": "OK",
+            "bounds": "[560,1340][990,1420]",
+            "clickable": "true",
+        },
+    ]
+
+    bars = _detect_fixed_system_bars(hierarchy, 1080, 2400)
+    assert bars == [
+        {"left": 0, "top": 0, "right": 1080, "bottom": 80},
+        {"left": 0, "top": 2268, "right": 1080, "bottom": 2400},
+    ]
+
+    filtered = filter_ui_hierarchy(hierarchy, screen_width=1080, screen_height=2400)
+    texts = _texts_of(filtered)
+    assert "Cancel" in texts
+    assert "OK" in texts
+    ok = next(el for el in filtered if el.get("text") == "OK")
+    assert ok["bounds"] == "[560,1340][990,1420]"
+
+
+def test_systemui_tall_bottom_dialog_panel_not_a_bar():
+    """高于屏幕 15% 的贴底满宽 SystemUI 弹窗面板是弹窗而非导航栏。
+
+    修复前 systemui 绕过了高度上限被判为固定栏，伪固定栏会裁剪或静默丢弃跨越弹窗上沿的元素。
+    """
+    hierarchy = [
+        {
+            "package": "com.android.systemui",
+            "class": "android.widget.FrameLayout",
+            "bounds": "[0,1700][1080,2400]",
+            "clickable": "false",
+            "scrollable": "false",
+        },
+        {
+            "package": "com.android.systemui",
+            "class": "android.widget.Button",
+            "text": "OK",
+            "bounds": "[560,2200][990,2300]",
+            "clickable": "true",
+        },
+        # 跨越弹窗上沿的应用元素
+        {
+            "package": "com.example.app",
+            "class": "android.widget.TextView",
+            "text": "CrossingItem",
+            "bounds": "[100,1600][980,1750]",
+            "clickable": "true",
+        },
+        # 大部分被弹窗面板覆盖的应用元素
+        {
+            "package": "com.example.app",
+            "class": "android.widget.TextView",
+            "text": "CoveredItem",
+            "bounds": "[100,1690][980,1800]",
+            "clickable": "true",
+        },
+    ]
+
+    assert _detect_fixed_system_bars(hierarchy, 1080, 2400) == []
+
+    filtered = filter_ui_hierarchy(hierarchy, screen_width=1080, screen_height=2400)
+    texts = _texts_of(filtered)
+    assert "OK" in texts
+    assert "CrossingItem" in texts
+    assert "CoveredItem" in texts
+    crossing = next(el for el in filtered if el.get("text") == "CrossingItem")
+    assert crossing["bounds"] == "[100,1600][980,1750]"
+
+
+def test_real_status_and_nav_bars_still_filtered():
+    """回归保护：真实细长栏仍被识别并裁剪被遮挡元素，包括 SystemUI 的细手势导航条（高度 < 25px）。"""
+    hierarchy = [
+        dict(_STATUS_BAR),
+        dict(_NAV_BAR),
+        # 20px 高的手势导航条，低于通用 25px 下限，靠 systemui 高置信身份命中
+        {
+            "package": "com.android.systemui",
+            "class": "android.widget.FrameLayout",
+            "bounds": "[0,2380][1080,2400]",
+            "clickable": "false",
+            "scrollable": "false",
+        },
+        {
+            "package": "com.example.app",
+            "class": "android.widget.TextView",
+            "text": "Partially occluded item",
+            "bounds": "[0,2100][1080,2300]",
+            "clickable": "true",
+        },
+        {
+            "package": "com.example.app",
+            "class": "android.widget.TextView",
+            "text": "Almost entirely covered sliver",
+            "bounds": "[0,2260][1080,2300]",
+            "clickable": "true",
+        },
+    ]
+
+    bars = _detect_fixed_system_bars(hierarchy, 1080, 2400)
+    assert {"left": 0, "top": 0, "right": 1080, "bottom": 80} in bars
+    assert {"left": 0, "top": 2268, "right": 1080, "bottom": 2400} in bars
+    assert {"left": 0, "top": 2380, "right": 1080, "bottom": 2400} in bars
+
+    filtered = filter_ui_hierarchy(hierarchy, screen_width=1080, screen_height=2400)
+    texts = _texts_of(filtered)
+    assert "Partially occluded item" in texts
+    assert "Almost entirely covered sliver" not in texts
+    clamped = next(el for el in filtered if el.get("text") == "Partially occluded item")
+    # 按导航栏上沿 2268 裁剪
+    assert clamped["bounds"] == "[0,2100][1080,2268]"

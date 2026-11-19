@@ -769,6 +769,14 @@ class FlashProfileConfig(BaseModel):
             " task simply runs until it reports its status."
         ),
     )
+    max_silent_turns: int = Field(
+        default=5,
+        ge=0,
+        description=(
+            "连续多少轮模型未调用任何工具（如空回复、拒答）后以失败终止 Flash 循环；0 表示关闭。"
+            "没有该保护时，持续回空的端点会在 max_turns 允许的范围内一直循环。"
+        ),
+    )
     explorer_mode: ExplorerVersion = Field(
         default="flash",
         description="Perception mode for Flash runner ('flash' for 1-shot detection).",

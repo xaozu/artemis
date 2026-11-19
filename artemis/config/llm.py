@@ -171,28 +171,24 @@ def _expand_default_into_nodes(config_dict: dict) -> dict:
         "object_detector",
     ]
 
-    result: dict[str, Any] = {}
-    for node in all_agent_nodes:
+    def _merge_over_default(node: str) -> dict[str, Any]:
+        # 节点覆盖叠加在 default 之上；嵌套字典（如 fallback）按字段合并而非整体替换。
         node_cfg = dict(default_model_cfg)
-        if node in nodes_override:
-            for k, v in nodes_override[node].items():
-                if isinstance(v, dict) and isinstance(node_cfg.get(k), dict):
-                    node_cfg[k] = {**node_cfg[k], **v}
-                else:
-                    node_cfg[k] = v
-        result[node] = node_cfg
+        for k, v in nodes_override.get(node, {}).items():
+            if isinstance(v, dict) and isinstance(node_cfg.get(k), dict):
+                node_cfg[k] = {**node_cfg[k], **v}
+            else:
+                node_cfg[k] = v
+        return node_cfg
 
-    utils_dict: dict[str, Any] = {}
-    for util in all_utils_nodes:
-        util_cfg = dict(default_model_cfg)
-        if util in nodes_override:
-            for k, v in nodes_override[util].items():
-                if isinstance(v, dict) and isinstance(util_cfg.get(k), dict):
-                    util_cfg[k] = {**util_cfg[k], **v}
-                else:
-                    util_cfg[k] = v
-        utils_dict[util] = util_cfg
-    result["utils"] = utils_dict
+    result: dict[str, Any] = {node: _merge_over_default(node) for node in all_agent_nodes}
+
+    # 可选评审节点只在显式声明时写入；未声明时 get_agent() 回落到 lightweight_judge_default()。
+    for node in ("validator_pixel_safety_net", "planner_validation"):
+        if node in nodes_override:
+            result[node] = _merge_over_default(node)
+
+    result["utils"] = {util: _merge_over_default(util) for util in all_utils_nodes}
 
     return result
 

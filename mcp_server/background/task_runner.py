@@ -264,7 +264,13 @@ async def run_task(
 
         device_info_line = f"Device Serial: `{target_serial}`\n" if target_serial else ""
 
-        if isinstance(result, dict) and "status" in result and result.get("status") != "completed":
+        # 仅 Flash 返回 {"status", "explanation"} 报告信封；Pro 输出字典里的 status 是业务数据。
+        if (
+            model.lower() == "flash"
+            and isinstance(result, dict)
+            and "status" in result
+            and result.get("status") != "completed"
+        ):
             error_explanation = result.get("explanation", "Task execution returned failed status.")
             print(f"Task finished with non-completed status: {error_explanation}", file=sys.stderr)
             trace_store.update_trace_status(

@@ -63,6 +63,7 @@ async def test_device_context_uses_adb_size_without_starting_ui_client():
     agent._ui_adb_client.get_screen_data.assert_not_called()
 
 
+@pytest.mark.usefixtures("fake_llm_api_keys")
 @pytest.mark.asyncio
 async def test_task_that_never_acquires_queue_does_not_create_trace_session():
     agent = Agent()
@@ -113,6 +114,7 @@ async def test_locked_work_profile_does_not_block_unlocked_device_owner():
     await agent._ensure_device_unlocked()
 
 
+@pytest.mark.usefixtures("fake_llm_api_keys")
 @pytest.mark.asyncio
 async def test_agent_inherits_session_id_from_env_and_propagates_to_tracing(monkeypatch):
     import uuid

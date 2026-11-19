@@ -128,10 +128,31 @@
     "checker": {
       "thinking_level": "medium",
       "include_thoughts": true
+    },
+    // 🛡️ Pixel Safety Net 与 🎯 Planner Validation：轻量评审节点。
+    // 不声明时出厂默认直连 Google（provider=google），会绕过千面云代理，因此显式改走 openai。
+    // 模型沿用出厂组合；2026-11-19 已通过代理实测，两者均可识别截图。
+    // 实测延迟：3.5-flash-lite 带图 11–70s 波动较大，3.1-flash-lite 5–14s；若安全网拖慢 Pro，可把主模型换成 3.1-flash-lite。
+    "validator_pixel_safety_net": {
+      "provider": "openai",
+      "model": "gemini-3.5-flash-lite",
+      "temperature": 0.0,
+      "fallback": {
+        "provider": "openai",
+        "model": "gemini-3.1-flash-lite",
+        "temperature": 0.0
+      }
+    },
+    "planner_validation": {
+      "provider": "openai",
+      "model": "gemini-3.5-flash-lite",
+      "temperature": 0.0,
+      "fallback": {
+        "provider": "openai",
+        "model": "gemini-3.1-flash-lite",
+        "temperature": 0.0
+      }
     }
-    // 🎯 Planner Validation: Advisory review of milestone changes.
-    // Defaults to the same lightweight model as the pixel safety net
-    // (gemini-3.5-flash-lite, temperature 0); add "planner_validation": {...} here to override.
   },
 
   // ------------------------------------------------------------------------------

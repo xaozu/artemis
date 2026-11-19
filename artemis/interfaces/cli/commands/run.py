@@ -335,6 +335,9 @@ def run_command(
                     app_path=app_path,
                     session_id=target_sid,
                     ingress="cli",
+                    # /api/run 接受这两个 Pro 调优参数并转成 worker 参数；漏传会让经 daemon 派发的任务忽略 CLI 设置
+                    verification_level=verification_level,
+                    explorer_mode=explorer_pro_mode,
                     base_url=base_url,
                 )
                 if resp and resp.get("tasks"):

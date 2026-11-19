@@ -60,6 +60,88 @@ def test_cli_batch_help():
     assert "--explorer-pro-mode" in result.output
 
 
+def test_cli_run_forwards_pro_tuning_to_daemon(monkeypatch):
+    """经 daemon 派发的 `artemis run` 必须保留校验级别与 Explorer 档位覆盖（上游 PR #224）。
+
+    daemon 客户端与 `/api/run` 早已支持这两个参数，但 run 命令派发时把它们丢掉了，
+    经调度器启动的 Pro 任务因此忽略 `--verification-level` 与 `--explorer-pro-mode`。
+    """
+    import artemis.runtime as runtime
+
+    monkeypatch.delenv("ARTEMIS_STANDALONE", raising=False)
+    monkeypatch.delenv("ARTEMIS_TASK_WORKER", raising=False)
+    monkeypatch.delenv("ARTEMIS_DEVICE_QUEUE_TICKET", raising=False)
+
+    cases = [
+        (
+            ["--verification-level", "strict", "--explorer-pro-mode", "ultra"],
+            "strict",
+            "ultra",
+        ),
+        (["--verification-level", "checkpoints"], "checkpoints", None),
+        (["--explorer-pro-mode", "pro"], None, "pro"),
+    ]
+    for extra, level, mode in cases:
+        captured: dict = {}
+
+        def fake_submit(**kwargs):
+            captured.update(kwargs)
+            return {"tasks": [{"session_id": "sid-run"}]}
+
+        monkeypatch.setattr(runtime, "ensure_daemon_running", lambda **_: (True, "http://x:1"))
+        monkeypatch.setattr(runtime, "submit_task_to_daemon", fake_submit)
+        monkeypatch.setattr(
+            runtime, "wait_for_daemon_task", lambda *_, **__: {"status": "completed"}
+        )
+
+        result = runner.invoke(
+            app,
+            ["run", "--profile", "pro", "--disable-outputter", *extra, "Open Settings"],
+        )
+        assert result.exit_code == 0, result.output
+        assert captured["goal"] == "Open Settings"
+        assert captured["profile"] == "pro"
+        assert captured["enable_outputter"] is False
+        assert captured.get("verification_level") == level
+        assert captured.get("explorer_mode") == mode
+        assert captured["ingress"] == "cli"
+
+
+def test_cli_run_forwards_pro_tuning_in_standalone_mode(monkeypatch):
+    """`--standalone` 的内嵌执行路径同样带上这两个 Pro 参数。"""
+    import artemis.interfaces.cli.commands.run as run_module
+
+    captured: dict = {}
+
+    async def fake_execute_task(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr(run_module, "execute_task", fake_execute_task)
+    monkeypatch.setattr(run_module, "display_local_device_status", lambda *_a, **_k: None)
+
+    result = runner.invoke(
+        app,
+        [
+            "run",
+            "--standalone",
+            "--profile",
+            "pro",
+            "--verification-level",
+            "strict",
+            "--explorer-pro-mode",
+            "ultra",
+            "--disable-outputter",
+            "Open Settings",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["goal"] == "Open Settings"
+    assert captured["profile"] == "pro"
+    assert captured["verification_level"] == "strict"
+    assert captured["explorer_pro_mode"] == "ultra"
+    assert captured["enable_outputter"] is False
+
+
 def test_cli_batch_forwards_pro_tuning_in_standalone_mode(monkeypatch):
     """`artemis batch --standalone` threads both knobs into run_batch_tasks."""
     import artemis.interfaces.cli.commands.batch as batch_module

@@ -32,6 +32,7 @@ from google.genai import types
 import pytest
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_video_analyzer_run():
     # Mock context
@@ -84,6 +85,7 @@ async def test_video_analyzer_run():
         assert mock_client.aio.models.generate_content_stream.called
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_video_analyzer_preserves_thought_signature():
     # Mock context
@@ -261,6 +263,7 @@ async def test_video_analyzer_preserves_thought_signature():
         assert model_turn.parts[0].thought_signature == dummy_signature
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_video_analyzer_sub_agent_confidence_validation():
     # Mock context

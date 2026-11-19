@@ -39,6 +39,7 @@ def disable_file_api(monkeypatch):
     monkeypatch.setenv("ARTEMIS_USE_FILE_API", "false")
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_run():
     # Mock context and state
@@ -127,6 +128,7 @@ async def test_explorer_run():
         assert mock_client.aio.models.generate_content.called
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_submit_answer():
     # Mock context and state
@@ -215,6 +217,7 @@ async def test_explorer_submit_answer():
         assert mock_client.aio.models.generate_content.called
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_submit_answer_self_correction():
     # Mock context and state
@@ -369,6 +372,7 @@ async def test_explorer_submit_answer_self_correction():
         assert mock_client.aio.models.generate_content.call_count == 2
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_initial_visual_marking():
     # Mock context and state with latest_ui_hierarchy
@@ -453,6 +457,7 @@ async def test_explorer_initial_visual_marking():
         assert labels_arg == ["1"]
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_initial_visual_marking_previous_screenshot():
     from artemis.data_engine.models import ImageRecord
@@ -547,6 +552,7 @@ async def test_explorer_initial_visual_marking_previous_screenshot():
         assert labels_arg == ["1"]
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_initial_visual_marking_previous_screenshot_no_ui_tree():
 
@@ -628,6 +634,7 @@ async def test_explorer_initial_visual_marking_previous_screenshot_no_ui_tree():
         mock_draw_dots.assert_not_called()
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_initial_visual_marking_previous_screenshot_ocr_fusion():
     from artemis.data_engine.models import ImageRecord
@@ -730,6 +737,7 @@ async def test_explorer_initial_visual_marking_previous_screenshot_ocr_fusion():
         assert labels_arg == ["1"]
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_initial_visual_marking_previous_screenshot_on_the_fly_ocr():
     from artemis.data_engine.models import ImageRecord
@@ -846,6 +854,7 @@ async def test_explorer_initial_visual_marking_previous_screenshot_on_the_fly_oc
         assert labels_arg == ["1"]
 
 
+@pytest.mark.usefixtures("fake_google_api_key")
 @pytest.mark.asyncio
 async def test_explorer_denylisted_tool():
     # Mock context and state

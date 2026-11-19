@@ -384,7 +384,9 @@ class AndroidAdbDriver(BaseDeviceDriver):
 
     async def launch_app(self, package_name: str) -> bool:
         try:
-            cmd = f"monkey -p {package_name} -c android.intent.category.LAUNCHER 1"
+            # --pct-syskeys 0：无物理按键设备（模拟器、车机等）上 monkey 会把唯一的事件花在按键上，
+            # 导致应用没被拉起却仍返回成功。
+            cmd = f"monkey --pct-syskeys 0 -p {package_name} -c android.intent.category.LAUNCHER 1"
             await asyncio.to_thread(self.device.shell, cmd)
             return True
         except Exception as e:

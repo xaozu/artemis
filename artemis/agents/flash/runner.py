@@ -93,7 +93,7 @@ from artemis.utils.coordinates import (
     COORDINATE_SPACE_NORMALIZED,
     parse_swipe_parameters,
 )
-from artemis.utils.logger import get_logger
+from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -144,12 +144,14 @@ class FlashRunner:
         try:
             cfg = load_agent_config()
             self.max_turns = max_turns if max_turns is not None else cfg.flash.max_turns
+            self.max_silent_turns = cfg.flash.max_silent_turns
             self.step_summarizer_cfg = cfg.flash.step_summarizer
             self.memory_runtime_cfg = cfg.memory.runtime
             self.transcript_cfg = cfg.memory.transcript
             self.chunking_cfg = cfg.memory.chunking
         except Exception:
             self.max_turns = max_turns if max_turns is not None else 0
+            self.max_silent_turns = 5
             self.step_summarizer_cfg = StepSummarizerConfig()
             self.memory_runtime_cfg = MemoryRuntimeConfig()
             self.transcript_cfg = MemoryTranscriptConfig()
@@ -1063,6 +1065,8 @@ class FlashRunner:
         current_xml_list = xml_list
         previous_turn: _TurnRecord | None = None
         pending_notices: list[str] = []
+        # 连续无工具调用的轮数，出现一次工具调用即清零
+        silent_turns = 0
 
         while limit is None or turns < limit:
             turns += 1
@@ -1138,11 +1142,33 @@ class FlashRunner:
                 if is_final:
                     final_report = {"status": "failed", "explanation": raw_text}
                     break
+                # 端点持续回空（空内容、拒答）时，无上限的运行会约每秒调用一次模型直到调用方放弃；
+                # 连续 max_silent_turns 轮无工具调用即以失败结束（0 表示关闭保护）
+                silent_turns += 1
+                max_silent = getattr(self, "max_silent_turns", 5) or 0
+                if max_silent and silent_turns >= max_silent:
+                    stop_reason = (getattr(response, "response_metadata", None) or {}).get(
+                        "stop_reason"
+                    )
+                    logger.warning(
+                        f"FlashRunner stopping: {silent_turns} consecutive turns without a tool call"
+                        f" (last stop_reason={stop_reason!r})."
+                    )
+                    final_report = {
+                        "status": "failed",
+                        "explanation": (
+                            f"The model called no tool for {silent_turns} consecutive turns"
+                            f" (last stop_reason={stop_reason!r}, last reply {raw_text[:200]!r});"
+                            " stopped instead of looping."
+                        ),
+                    }
+                    break
                 pending_notices.append(_NO_TOOL_CALL_NOTICE)
                 ledger.stage_turn(messages[turn_base:])
                 previous_turn = _TurnRecord()
                 continue
 
+            silent_turns = 0
             # Process tool calls
             turn = _TurnRecord()
             (

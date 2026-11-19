@@ -15,7 +15,7 @@
 import re
 from typing import Any
 
-from artemis.utils.logger import get_logger
+from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -434,12 +434,17 @@ def _filter_and_prune(
     return [filtered_node]
 
 
+#: 只承载弹窗/浮层、从不拥有状态栏或导航栏的系统包。无论 bounds 多像固定栏
+#: （例如贴底满宽的运行时权限弹窗），这些包的节点都不会被识别为固定栏。
+_NEVER_FIXED_BAR_PACKAGES = frozenset({"com.android.permissioncontroller"})
+
+
 def _detect_fixed_system_bars(
     ui_hierarchy: list[dict[str, Any]], screen_width: int, screen_height: int
 ) -> list[dict[str, int]]:
     """Detect fixed, non-scrollable system or navigation bars anchored to the extreme top/bottom edges.
 
-    Enforces strict triple guardrails to guarantee near-zero false positives:
+    严格执行四重护栏，保证近乎零误判：
 
       1. Edge & Width Guarantee: Must anchor to top (top==0) or bottom
       (bottom==screen_height) and span >= 95% of screen width.
@@ -447,8 +452,15 @@ def _detect_fixed_system_bars(
       descendants/ancestors must NOT be scrollable.
       3. Identity & Height Bounds: High-confidence system package/IDs OR strict
       navigation bar height bounds.
+      4. 细条保证：即便是高置信系统包也必须是细条（底部不超过屏幕高度 15%，顶部不超过 12%）。
+      SystemUI 同时拥有全屏弹窗/警告窗口（USB 调试授权、崩溃/ANR 等），不设高度上限时它们会被
+      当成固定栏，导致 ``_clamp_by_fixed_bars`` 裁坏或静默丢弃弹窗附近的元素、点击目标偏移。
+      只承载弹窗的包（``_NEVER_FIXED_BAR_PACKAGES``）永远不算固定栏。
     """
     fixed_bars = []
+
+    max_bottom_bar_height = int(screen_height * 0.15)
+    max_top_bar_height = int(screen_height * 0.12)
 
     def check_scrollable(node: dict[str, Any]) -> bool:
         if node.get("scrollable") is True or str(node.get("scrollable", "")).lower() == "true":
@@ -487,16 +499,24 @@ def _detect_fixed_system_bars(
             )
 
             # Check bottom fixed bar (e.g., bottom navigation bar / system navigation bar)
-            if bounds["bottom"] >= screen_height and is_full_width and height > 0:
-                if is_high_conf_id or (25 <= height <= int(screen_height * 0.15)):
+            if (
+                package_name not in _NEVER_FIXED_BAR_PACKAGES
+                and bounds["bottom"] >= screen_height
+                and is_full_width
+                and 0 < height <= max_bottom_bar_height
+            ):
+                if is_high_conf_id or height >= 25:
                     fixed_bars.append(bounds.copy())
                     return  # Don't recurse into children of confirmed fixed bars
 
             # Check top fixed bar (e.g., status bar / top action bar)
-            if bounds["top"] <= 0 and is_full_width and height > 0:
-                if package_name == "com.android.systemui" or (
-                    15 <= height <= int(screen_height * 0.12)
-                ):
+            if (
+                package_name not in _NEVER_FIXED_BAR_PACKAGES
+                and bounds["top"] <= 0
+                and is_full_width
+                and 0 < height <= max_top_bar_height
+            ):
+                if package_name == "com.android.systemui" or height >= 15:
                     fixed_bars.append(bounds.copy())
                     return
 

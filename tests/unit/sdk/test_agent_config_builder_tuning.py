@@ -11,6 +11,10 @@ import pytest
 from artemis.config import VERIFICATION_LEVEL_PRESETS, checker_overrides_for_level
 from artemis.sdk.builders.agent_config_builder import AgentConfigBuilder
 
+# 每个用例都会 build() 并校验仓库默认 LLM 配置的凭据，统一注入占位 Key，
+# 避免结果依赖本机 .env。
+pytestmark = pytest.mark.usefixtures("fake_llm_api_keys")
+
 
 def test_with_verification_level_off_disables_the_checker():
     cfg = AgentConfigBuilder().with_verification_level("off").build()

@@ -23,6 +23,7 @@ import pytest
 from artemis.drivers.base import KeyCode, ScreenData, SwipeDirection
 from artemis.drivers.mock.mock_driver import MockDeviceDriver
 from artemis.drivers.android.adb_driver import AndroidAdbDriver
+from third_party.mobile_use.controllers.types import ElementQuery
 
 
 _ONE_PIXEL_PNG = base64.b64encode(
@@ -99,6 +100,12 @@ async def test_android_driver_with_mock_adb():
     # Test press key
     await driver.press_key(KeyCode.BACK)
     mock_adb_device.shell.assert_called_with("input keyevent 4")
+
+    # 通过 LAUNCHER 启动且不注入系统按键事件，兼容无物理按键设备（上游 PR #216）
+    assert await driver.launch_app("com.example.themesim") is True
+    mock_adb_device.shell.assert_called_with(
+        "monkey --pct-syskeys 0 -p com.example.themesim -c android.intent.category.LAUNCHER 1"
+    )
 
 
 @pytest.mark.asyncio
@@ -194,7 +201,7 @@ async def test_find_element_prefers_fresh_bounds_over_stale_center():
         )
     )
 
-    _, center, error = await driver.find_element(resource_id="app:id/digit_4")
+    _, center, error = await driver.find_element(ElementQuery(resource_id="app:id/digit_4"))
 
     assert error is None
     assert center == [140, 1820]

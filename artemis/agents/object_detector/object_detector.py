@@ -25,7 +25,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 
 from artemis.llm.structured import ParseFailure, parse_structured
 from artemis.services.llm import get_llm
-from artemis.utils.logger import get_logger
+from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -124,8 +124,12 @@ async def _run_object_detection(
     queries = queries or []
     templates = templates or ["Point to the following objects: {labels_str}"]
     try:
-        llm = get_llm(ctx, name="object_detector")
-    except Exception:
+        # object_detector 配置在 utils 下，必须带 is_utils=True 才能取到。
+        llm = get_llm(ctx, name="object_detector", is_utils=True)
+    except Exception as e:
+        logger.warning(
+            f"Object detector model unavailable ({e}); falling back to the operator model."
+        )
         llm = get_llm(ctx, name="operator")
 
     raw_timeout = getattr(getattr(ctx, "llm_config", None), "timeout", None)

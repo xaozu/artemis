@@ -832,6 +832,7 @@ def test_build_focus_context_drops_blank_fields_and_caps_reasoning_tail_intact()
     assert "Active sub-goal" not in block
 
 
+@pytest.mark.usefixtures("fake_llm_api_keys")
 def test_flash_config_and_builder():
     """Verify Flash profile configuration model and SDK builder fluent API."""
     cfg = Builders.AgentConfig.with_flash_config(

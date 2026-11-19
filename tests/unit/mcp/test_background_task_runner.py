@@ -102,3 +102,79 @@ async def test_run_task_applies_pro_tuning_to_agent_config(
         fake_builder.with_explorer.assert_called_once_with(pro_mode=expect_mode)
     fake_agent.run_task.assert_awaited_once()
     assert trace_store.read_status(trace_id)["status"] == "completed"
+
+
+async def _run_task_with_result(tmp_path, monkeypatch, run_result, *, model="Pro"):
+    """用返回 run_result 的模拟 agent 跑后台任务，返回记录的 trace 状态与 notify 事件类型。"""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+
+    from artemis.runtime import trace_store
+    from mcp_server.background import task_runner as bg
+
+    monkeypatch.setattr(trace_store, "TRACES_DIR", str(tmp_path))
+    trace_id = f"trace-{model}-result"
+    trace_store.init_trace(
+        trace_id=trace_id,
+        task_desc="Report order status",
+        model=model,
+        conversation_id="",
+        device_serial="emulator-5554",
+    )
+
+    fake_builder = MagicMock()
+    fake_builders = MagicMock()
+    fake_builders.AgentConfig.with_default_profile.return_value = fake_builder
+    fake_agent = MagicMock()
+    fake_agent._device_context = SimpleNamespace(device_id="emulator-5554")
+    fake_agent.run_task = AsyncMock(return_value=run_result)
+    fake_agent.clean = AsyncMock()
+
+    notify_mock = MagicMock()
+    monkeypatch.setattr(bg.device_utils, "resolve_adb_path", lambda: "adb")
+    monkeypatch.setattr(bg.device_utils, "get_connected_devices", lambda _adb: ["emulator-5554"])
+    monkeypatch.setattr(bg, "resolve_profile_file", lambda: None)
+    monkeypatch.setattr(bg, "_initialize_agent", AsyncMock())
+    monkeypatch.setattr(bg, "notify", notify_mock)
+
+    with (
+        patch("artemis.sdk.builders.Builders", fake_builders),
+        patch("artemis.sdk.Agent", return_value=fake_agent),
+        patch("artemis.sdk.types.AgentProfile", MagicMock()),
+        patch("artemis.config.initialize_llm_config", return_value=MagicMock()),
+    ):
+        await bg.run_task(
+            trace_id=trace_id,
+            task_desc="Report order status",
+            model=model,
+            conversation_id="",
+            device_serial="emulator-5554",
+        )
+
+    event_type = notify_mock.call_args.kwargs["event_type"] if notify_mock.call_args else None
+    return trace_store.read_status(trace_id)["status"], event_type
+
+
+@pytest.mark.asyncio
+async def test_pro_dict_output_with_status_key_is_not_misclassified_as_failed(
+    tmp_path, monkeypatch
+):
+    """Pro 输出字典里的 status 是业务数据（上游 PR #20），成功任务不能被记成失败。"""
+    status, event_type = await _run_task_with_result(
+        tmp_path, monkeypatch, {"status": "shipped", "order_id": 42}
+    )
+    assert status == "completed"
+    assert event_type == "completed"
+
+
+@pytest.mark.asyncio
+async def test_flash_report_envelope_failure_still_marks_failed(tmp_path, monkeypatch):
+    """Flash 的报告信封 {"status": "failed", ...} 仍须记为失败，修复不能削弱 Flash 的失败信号。"""
+    status, event_type = await _run_task_with_result(
+        tmp_path,
+        monkeypatch,
+        {"status": "failed", "explanation": "could not complete"},
+        model="flash",
+    )
+    assert status == "failed"
+    assert event_type == "failed"

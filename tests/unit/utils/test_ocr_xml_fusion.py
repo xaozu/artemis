@@ -75,6 +75,23 @@ class TestOCRFusion(unittest.TestCase):
         xml = [{"package": "com.example.app", "bounds": "[0,0][1080,2400]"}]
         self.assertEqual(_detect_status_bar_height(xml, screen_height=2400), 96)
 
+    def test_detect_status_bar_height_ignores_full_screen_systemui_dialog(self):
+        """全屏 SystemUI 弹窗窗口（USB 调试授权、崩溃/ANR）top 也为 0，不能被当作状态栏高度。
+
+        否则 _map_coordinates_back 会把全部 OCR 坐标平移出屏幕、整帧 OCR 结果被静默丢弃；
+        即使弹窗窗口排在 dump 最前面，也要继续扫描找到真正的状态栏（上游 PR #181）。
+        """
+        xml = [
+            {"package": "com.android.systemui", "bounds": "[0,0][1080,2400]"},
+            {"package": "com.android.systemui", "bounds": "[0,0][1080,120]"},
+            {"package": "com.example.app", "bounds": "[0,0][1080,2400]"},
+        ]
+        self.assertEqual(_detect_status_bar_height(xml, screen_height=2400), 120)
+
+        # 只有弹窗窗口时回退到屏幕高度的 4%
+        xml = [{"package": "com.android.systemui", "bounds": "[0,0][1080,2400]"}]
+        self.assertEqual(_detect_status_bar_height(xml, screen_height=2400), 96)
+
     def test_crop_image_remove_status_bar(self):
         # Create a dummy image
         img = Image.new("RGB", (100, 100), color="red")

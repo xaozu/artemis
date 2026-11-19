@@ -27,8 +27,8 @@ from artemis.config.constants import (
 )
 from artemis.config.paths import ROOT_DIR, get_config_path
 from artemis.llm.google import VideoProcessing
-from artemis.utils.file import load_jsonc
-from artemis.utils.logger import get_logger
+from third_party.mobile_use.utils.file import load_jsonc
+from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -769,6 +769,14 @@ class FlashProfileConfig(BaseModel):
             " task simply runs until it reports its status."
         ),
     )
+    max_silent_turns: int = Field(
+        default=5,
+        ge=0,
+        description=(
+            "连续多少轮模型未调用任何工具（如空回复、拒答）后以失败终止 Flash 循环；0 表示关闭。"
+            "没有该保护时，持续回空的端点会在 max_turns 允许的范围内一直循环。"
+        ),
+    )
     explorer_mode: ExplorerVersion = Field(
         default="flash",
         description="Perception mode for Flash runner ('flash' for 1-shot detection).",
@@ -820,6 +828,15 @@ class ExecutionConfig(BaseModel):
         description=(
             "Action turns allowed without a task_plan change before the ledger gate"
             " prompts for an update. Set to 0 to disable staleness checks."
+        ),
+    )
+    max_no_action_turns: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        description=(
+            "Operator 连续多少轮既无可执行动作、计划也未完成即以失败终止运行。"
+            "只调用辅助工具的轮次和未调用工具的回复都无法借此无限重置单轮工具预算。"
         ),
     )
 

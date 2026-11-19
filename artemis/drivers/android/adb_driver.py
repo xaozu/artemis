@@ -21,16 +21,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 from adbutils import AdbClient, AdbDevice
-from artemis.clients.ui_automator_client import (
-    UIAutomatorClient,
-    _parse_hierarchy_xml_to_elements,
-)
 from artemis.config.paths import get_temp_dir
 from artemis.drivers.base import BaseDeviceDriver, KeyCode, ScreenData, SwipeDirection
 from artemis.toolchain import find_ffmpeg, find_scrcpy
 from artemis.utils.video import build_scrcpy_record_command
 from artemis.utils.ui_filter import filter_ui_hierarchy
-from artemis.utils.logger import get_logger
+from third_party.mobile_use.clients.ui_automator_client import (
+    UIAutomatorClient,
+    parse_hierarchy_xml_to_elements,
+)
+from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -182,7 +182,7 @@ class AndroidAdbDriver(BaseDeviceDriver):
                     hierarchy = await res if asyncio.iscoroutine(res) else res
                     if isinstance(hierarchy, str):
                         ui_hierarchy_xml = hierarchy
-                        ui_elements = _parse_hierarchy_xml_to_elements(hierarchy)
+                        ui_elements = parse_hierarchy_xml_to_elements(hierarchy)
                     else:
                         ui_elements = hierarchy
                 elif hasattr(self._ui_adb_client, "get_ui_elements"):
@@ -384,7 +384,9 @@ class AndroidAdbDriver(BaseDeviceDriver):
 
     async def launch_app(self, package_name: str) -> bool:
         try:
-            cmd = f"monkey -p {package_name} -c android.intent.category.LAUNCHER 1"
+            # --pct-syskeys 0：无物理按键设备（模拟器、车机等）上 monkey 会把唯一的事件花在按键上，
+            # 导致应用没被拉起却仍返回成功。
+            cmd = f"monkey --pct-syskeys 0 -p {package_name} -c android.intent.category.LAUNCHER 1"
             await asyncio.to_thread(self.device.shell, cmd)
             return True
         except Exception as e:

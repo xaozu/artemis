@@ -19,7 +19,7 @@ import pytest
 from artemis.sdk.agent import Agent
 from artemis.context import DeviceContext, DevicePlatform
 from artemis.runtime.device_lock import DeviceBusyError
-from artemis.sdk.types.exceptions import AgentError
+from third_party.mobile_use.sdk.types.exceptions import AgentError
 
 
 @pytest.mark.asyncio
@@ -63,6 +63,7 @@ async def test_device_context_uses_adb_size_without_starting_ui_client():
     agent._ui_adb_client.get_screen_data.assert_not_called()
 
 
+@pytest.mark.usefixtures("fake_llm_api_keys")
 @pytest.mark.asyncio
 async def test_task_that_never_acquires_queue_does_not_create_trace_session():
     agent = Agent()
@@ -79,7 +80,7 @@ async def test_task_that_never_acquires_queue_does_not_create_trace_session():
     agent._prepare_tracing = MagicMock()
 
     with patch(
-        "artemis.sdk.agent.DeviceExecutionLock.acquire",
+        "artemis.runtime.DeviceExecutionLock.acquire",
         side_effect=DeviceBusyError("queue cancelled"),
     ):
         with pytest.raises(DeviceBusyError, match="queue cancelled"):
@@ -113,6 +114,7 @@ async def test_locked_work_profile_does_not_block_unlocked_device_owner():
     await agent._ensure_device_unlocked()
 
 
+@pytest.mark.usefixtures("fake_llm_api_keys")
 @pytest.mark.asyncio
 async def test_agent_inherits_session_id_from_env_and_propagates_to_tracing(monkeypatch):
     import uuid

@@ -17,8 +17,8 @@ import difflib
 from io import BytesIO
 from typing import Any
 
-from artemis.utils.logger import get_logger
 from artemis.utils.ui_filter import _parse_bounds
+from third_party.mobile_use.utils.logger import get_logger
 from PIL import Image
 
 logger = get_logger(__name__)
@@ -89,6 +89,9 @@ def _calculate_overlap_ratio(ocr_bounds: dict[str, int], xml_bounds: dict[str, i
 
 def _detect_status_bar_height(xml_hierarchy: list[dict[str, Any]], screen_height: int) -> int:
     """Try to detect status bar height from XML, fallback to 4% of screen height."""
+    # 状态栏是贴顶的细条，高度不超过屏幕的 12%（与 ui_filter._detect_fixed_system_bars 的顶栏上限一致）
+    max_status_bar_height = int(screen_height * 0.12)
+
     for node in xml_hierarchy:
         package = node.get("package") or node.get("packageName")
         bounds_str = node.get("bounds")
@@ -96,7 +99,10 @@ def _detect_status_bar_height(xml_hierarchy: list[dict[str, Any]], screen_height
         # Look for systemui at the top
         if package == "com.android.systemui":
             bounds = _parse_bounds(bounds_str)
-            if bounds and bounds["top"] == 0:
+            # 全屏 SystemUI 弹窗窗口（USB 调试授权、崩溃/ANR 等）的 top 也是 0；若把其 bottom 当作
+            # 状态栏高度，_map_coordinates_back 会把全部 OCR 坐标移出屏幕、整帧 OCR 结果被静默丢弃。
+            # 因此要求高度像细条，不满足则继续扫描真正的状态栏。
+            if bounds and bounds["top"] == 0 and bounds["bottom"] <= max_status_bar_height:
                 return bounds["bottom"]
 
     return int(screen_height * 0.04)

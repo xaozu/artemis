@@ -14,6 +14,7 @@ from artemis.services.llm import (
     acomplete_structured,
     with_fallback,
 )
+from third_party.mobile_use.llm_service import WAITING_MESSAGE, LLMWaitNotice
 
 
 @pytest.mark.asyncio
@@ -194,6 +195,47 @@ async def test_with_fallback_refuses_to_hide_bad_requests():
 
 
 @pytest.mark.asyncio
+async def test_with_fallback_clears_fallback_flag_when_cancelled():
+    seen = {}
+
+    async def main_call():
+        seen["during"] = llm_service._FALLBACK_AVAILABLE.get()
+        raise asyncio.CancelledError
+
+    async def fallback_call():  # pragma: no cover - must not run
+        raise AssertionError("fallback must not run on cancellation")
+
+    with pytest.raises(asyncio.CancelledError):
+        await with_fallback(main_call=main_call, fallback_call=fallback_call)
+    assert seen["during"] is True
+    assert llm_service._FALLBACK_AVAILABLE.get() is False
+
+
+@pytest.mark.asyncio
+async def test_timeout_wrapper_enforces_hard_timeout():
+    notices = []
+    wait = LLMWaitNotice(notify=notices.append, on_timeout=notices.append, poll_interval=0.01)
+
+    with pytest.raises(TimeoutError):
+        await wait(asyncio.sleep(10), timeout_seconds=0.01, hard_timeout=0.05)
+    assert notices == [WAITING_MESSAGE, "LLM call timed out after 0.05 seconds."]
+
+
+@pytest.mark.asyncio
+async def test_timeout_wrapper_holds_clock_while_paused():
+    wait = LLMWaitNotice(
+        notify=lambda _: None, on_timeout=lambda _: None, hold=lambda: True, poll_interval=0.01
+    )
+
+    async def slow():
+        await asyncio.sleep(0.1)
+        return "done"
+
+    # The 0.02s hard timeout never runs out while the task is held (paused).
+    assert await wait(slow(), timeout_seconds=0.01, hard_timeout=0.02) == "done"
+
+
+@pytest.mark.asyncio
 async def test_acomplete_structured_corrective_reask():
     class CorrectsItself:
         def __init__(self):
@@ -264,3 +306,22 @@ async def test_mid_stream_failure_records_stream_reset_payload(monkeypatch):
     assert payload["reason"] == "mid_stream_failure"
     assert "stream_exec_id" in payload
     assert "lower API priority" in payload["message"]
+
+
+def test_get_cached_raw_model_routes_by_provider(monkeypatch):
+    """摘要与历史压缩依赖该函数按配置的服务商建模；同步上游时不能被删掉。"""
+    captured = {}
+
+    def fake_get_model(endpoint):
+        captured["endpoint"] = endpoint
+        return "model"
+
+    monkeypatch.setattr(llm_service.ModelFactory, "get_model", fake_get_model)
+
+    assert (
+        llm_service.get_cached_raw_model("openai", "gemini-3.8-flash", temperature=0.0) == "model"
+    )
+    endpoint = captured["endpoint"]
+    assert endpoint.provider is llm_service.ModelProvider.OPENAI
+    assert endpoint.model_name == "gemini-3.8-flash"
+    assert endpoint.temperature == 0.0

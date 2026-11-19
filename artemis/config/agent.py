@@ -830,6 +830,15 @@ class ExecutionConfig(BaseModel):
             " prompts for an update. Set to 0 to disable staleness checks."
         ),
     )
+    max_no_action_turns: int = Field(
+        default=4,
+        ge=1,
+        le=20,
+        description=(
+            "Operator 连续多少轮既无可执行动作、计划也未完成即以失败终止运行。"
+            "只调用辅助工具的轮次和未调用工具的回复都无法借此无限重置单轮工具预算。"
+        ),
+    )
 
 
 class ProProfileConfig(BaseModel):

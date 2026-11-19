@@ -19,6 +19,7 @@ from uuid import uuid4
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
+from artemis.agents.operator.progress_guard import configured_progress_guard
 from artemis.core.tool_failure import is_tool_failure
 from artemis.context import ArtemisContext
 from artemis.data_engine.trace import (
@@ -145,6 +146,8 @@ class OperatorNode:
         # model call). Legacy-path fallback only: with a transcript ledger the
         # ledger's own ``last_turn_silent`` is authoritative.
         self._previous_turn_silent: bool = False
+        # 跨图轮次限制连续无可执行动作的轮数，避免空回复或只调辅助工具时无限空转
+        self._progress_guard = configured_progress_guard()
 
     def _previous_turn_was_silent(self) -> bool:
         """Whether the previous turn carried no visible reasoning text.
@@ -567,11 +570,13 @@ class OperatorNode:
                 except Exception as e:
                     logger.error(f"Failed to parse function_call fallback: {e}")
 
-            if not response.tool_calls:
-                logger.warning("LLM stopped without calling any tool. Encouraging action.")
-                break
-
             current_messages.append(response)
+
+            if not response.tool_calls:
+                # 普通回复（拒答、请求输入等）保留在转录中而不是静默丢弃；
+                # 重复的无动作轮次由跨轮次的进度守卫兜底
+                logger.warning("LLM stopped without calling any tool; no action was proposed.")
+                break
 
             # Manifest-driven, so a backend's extension actions are classified as
             # turn-ending device actions without touching this file.
@@ -964,6 +969,13 @@ class OperatorNode:
         # tool-loop products) for commit at the next build, when the turn's
         # step id and validator result exist.
         self._stage_transcript_turn(messages)
+
+        # 8c. 进度守卫：连续无可执行动作且计划未完成达到上限时以失败终止
+        self._progress_guard.record_turn(
+            action_result,
+            self._read_task_plan_text(),
+            user_stopped=bool(getattr(state, "user_stop_requested", False)),
+        )
 
         # 9. Update State
         structured_decisions = json.dumps(action_result) if action_result else None

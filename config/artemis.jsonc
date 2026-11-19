@@ -188,6 +188,10 @@
       "explorer": {
         "mode": "flash" // Explorer tier for Pro nodes (Operator/Validator): 'flash' | 'pro' | 'ultra'
       },
+      // ⏱️ Execution: Operator 执行护栏
+      "execution": {
+        "max_no_action_turns": 4 // 连续多少轮既无可执行动作、计划也未完成即以失败终止（1–20）
+      },
       // 🎯 Planner Validation: Async verification when task plan milestones change
       "planner_validation": {
         "enabled": true // On by default: every milestone text change is reviewed (advisory: hint + reason only, never rolled back)
